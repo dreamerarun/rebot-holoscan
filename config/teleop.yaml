@@ -1,0 +1,53 @@
+# reBot 102 Leader -> Holoscan -> Isaac Sim (B601-DM twin)
+# Joint map taken from rebot-arm-dli-isaacsim/config/teleop_config.json; verify each
+# direction in the GUI by moving one leader joint at a time.
+
+rate_hz: 60
+
+leader:
+  port: auto                 # auto = the single /dev/ttyUSB* / ttyACM* that is a FashionStar bus
+  baudrate: 1000000
+  ids: {shoulder_pan: 0, shoulder_lift: 1, elbow_flex: 2, wrist_flex: 3, wrist_yaw: 4, wrist_roll: 5, gripper: 6}
+  # Same windows as lerobot_teleoperator_rebot_arm_102 (degrees; multi-turn unwrapped into these).
+  ranges:
+    shoulder_pan:  [-150.0, 150.0]
+    shoulder_lift: [-1.0, 170.0]
+    elbow_flex:    [-200.0, 1.0]
+    wrist_flex:    [-80.0, 90.0]
+    wrist_yaw:     [-90.0, 90.0]
+    wrist_roll:    [-130.0, 130.0]
+    gripper:       [0.0, 270.0]
+
+# leader joint -> sim joint: sim_deg = leader_deg * scale + offset_deg
+arm_mapping:
+  - {leader: shoulder_pan,  sim: joint1, scale: -1.0, offset_deg: 0.0}
+  - {leader: shoulder_lift, sim: joint2, scale: -1.0, offset_deg: 0.0}
+  - {leader: elbow_flex,    sim: joint3, scale:  1.0, offset_deg: 0.0}
+  - {leader: wrist_flex,    sim: joint4, scale:  1.0, offset_deg: 0.0}
+  - {leader: wrist_yaw,     sim: joint5, scale:  1.0, offset_deg: 0.0}
+  - {leader: wrist_roll,    sim: joint6, scale: -1.0, offset_deg: 0.0}
+
+gripper_mapping:
+  leader: gripper
+  leader_closed_deg: 0.0
+  leader_open_deg: 45.0
+  sim_closed_m: 0.0
+  sim_open_m: 0.05           # finger_left; finger_right mirrors it (-x)
+
+# B601-DM URDF limits (rad), used to clamp every target.
+sim_limits:
+  joint1: [-2.8, 2.8]
+  joint2: [-3.14, 0.0]
+  joint3: [-3.14, 0.0]
+  joint4: [-1.87, 1.57]
+  joint5: [-1.57, 1.57]
+  joint6: [-3.14, 3.14]
+
+filter:
+  max_step_deg: 12.0         # per tick (60 Hz) -> caps a jump at 720 deg/s
+  deadband_deg: 0.05
+  watchdog_s: 0.5            # no fresh leader reading for this long -> hold last target
+
+sim_link:
+  cmd_endpoint: "tcp://127.0.0.1:5605"    # Holoscan PUB -> Isaac Sim SUB
+  state_endpoint: "tcp://127.0.0.1:5606"  # Isaac Sim PUB -> Holoscan SUB
