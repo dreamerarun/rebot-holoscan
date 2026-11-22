@@ -1,0 +1,28 @@
+# Real reBot B601-DM (Damiao motors over the USB-CAN serial bridge).
+# sim_rad = direction * (motor_rad - zero_offset)      motor_rad = sim_rad / direction + zero_offset
+#
+# zero_offset_deg: motor reading when the arm is in the sim zero pose
+# (folded, gripper pointing straight forward, closed). Measured 2026-11-22 21:4x, motors OFF,
+# arm placed by the user: joint1 94.32, joint2 -0.38, joint3 -0.67, joint4 -1.76, joint5 2.79, joint6 -16.43.
+# (An earlier, less careful placement read joint1 81.4 / joint6 -25.4.) joint2/3 sit on their folded stops;
+# joint4/5 deviations are within hand-placement error and stay 0. Software offsets only: nothing is written to the motors.
+
+port: /dev/ttyACM0
+baud: 921600
+read_hz: 30
+
+joints:
+  - {name: joint1, motor_id: 0x01, feedback_id: 0x11, model: "4340P", sim: joint1, direction:  1, zero_offset_deg: 94.32}
+  - {name: joint2, motor_id: 0x02, feedback_id: 0x12, model: "4340P", sim: joint2, direction:  1, zero_offset_deg: 0.0}
+  - {name: joint3, motor_id: 0x03, feedback_id: 0x13, model: "4340P", sim: joint3, direction:  1, zero_offset_deg: 0.0}
+  - {name: joint4, motor_id: 0x04, feedback_id: 0x14, model: "4310",  sim: joint4, direction:  1, zero_offset_deg: 0.0}
+  - {name: joint5, motor_id: 0x05, feedback_id: 0x15, model: "4310",  sim: joint5, direction:  1, zero_offset_deg: 0.0}
+  - {name: joint6, motor_id: 0x06, feedback_id: 0x16, model: "4310",  sim: joint6, direction:  1, zero_offset_deg: -16.43}
+
+gripper:
+  motor_id: 0x07
+  feedback_id: 0x17
+  model: "4310"
+  closed_deg: 4.05     # reading with the gripper closed (measured)
+  open_deg: null       # fill in from the hand check (open the gripper fully by hand)
+  sim_open_m: 0.05
