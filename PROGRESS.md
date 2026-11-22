@@ -135,3 +135,22 @@ Next options:
 3. Data collection on the real arm through Holoscan: leader teleop + camera (Dell webcam / USB camera) -> LeRobot dataset.
 4. Policy on the GB10 (ACT / SmolVLA) through the same SafetyFilter: camera lane + inference lane + control lane in Holoscan.
 5. Scripted pick on the real arm (known cube spot), slow, after 1-2.
+
+## Data collection status (2026-11-22, night) - resume here
+
+Ready, not started yet (0 episodes kept; the first one had a wrong time base and was deleted).
+- Camera: Logitech C270, OpenCV index 1, raised and looking down at the table. Do not move it.
+- Task: yellow cube -> orange box (box in one fixed spot). Goal: 30 episodes, train, then add 10-20 where it fails.
+- Start: `~/rebot-holoscan/open_recorder_terminal.sh` (opens a terminal on the desktop + the Holoviz camera window).
+  Keys in that terminal (or `echo X >> ~/rebot-holoscan/keys`): e enable, n start/stop+save, x discard,
+  s hold, a re-arm, p park, o off (only when resting folded), q park + quit.
+- Fold the leader to its rest pose first: e is refused until every joint is within 10 deg of the arm.
+- Recording runs at a fixed 15 fps; each save prints the real fps and warns if it is off by > 5 %.
+- Afterwards: `./convert_real_dataset.sh cube_to_box` -> data/lerobot/rebot_real_cube_to_box (LeRobot v3).
+
+Fixed tonight (all committed):
+- stale-leader HOLD right after enable: accept only leader messages newer than the last one
+  (Holoscan does not tick the leader while the arm operator is busy enabling).
+- joints 2/3 fell > 15 deg behind on big lifts / park -> motor-side vlim now 2x the software cap.
+- start-up with motors ON while the arm rests folded -> switches them off cleanly; `o` key does the same.
+- C270 delivered ~20 fps -> recorder samples on a fixed 15 Hz clock and checks the real rate.
