@@ -171,7 +171,11 @@ class LiveArmOp(Operator):
     def compute(self, op_input, op_output, context):
         msg = op_input.receive("target")
         now = time.perf_counter()
-        if msg and msg.get("ok") and msg.get("q") is not None:
+        # Only accept leader readings NEWER than the last accepted one. While this operator is busy
+        # (e.g. the ~1.2 s enable), Holoscan does not tick the leader (its output has nowhere to go), so
+        # the next message can be one taken before the enable; it must not count as fresh leader data.
+        if msg and msg.get("ok") and msg.get("q") is not None and \
+                (self.t_target is None or msg["t"] > self.t_target):
             self.target, self.t_target = np.asarray(msg["q"], float), msg["t"]
         states = self.arm.read()
         measured = measured_q7(self.rcfg, states)
