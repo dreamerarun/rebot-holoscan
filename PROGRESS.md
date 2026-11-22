@@ -107,3 +107,31 @@ Nothing moves until every stage below has passed. The user enables motors and st
 - Real arm runs with the control lane only; no DNN/vision in the same process until teleop is proven.
 - Every command and state is logged (logs/real_*.jsonl) for review.
 - Scripted pick on the real arm only after leader teleop is clean, at reduced speed, with the cube in a known safe spot.
+
+## Real arm status (2026-11-22, end of day)
+
+Done and verified on the real B601-DM:
+- Stage 0 read-only: 7/7 Damiao motors, zero offsets j1 94.32 / j6 -16.43 (software only, motors untouched),
+  directions verified by hand, gripper range closed 0 / open -248 deg. `./run_real_mirror.sh` = sim mirrors real (motors off).
+- Stage 1 shadow: `./run_real_shadow.sh` (motors off, sim shows the filtered command).
+- Stage 2 live: `./run_real_teleop.sh` - leader drives the real arm + gripper through Holoscan.
+  Starts OFF; keys e / a / s / p / q (terminal, or `--keys-file ~/rebot-holoscan/keys` and `echo X >> keys`).
+  First sessions at 15 deg/s: every joint enabled with 0.00 deg movement, no HOLDs, temps 33-39 C.
+- Gripper: FORCE_POS, current cap 0.10 (Seeed default), enabled after the arm; park keeps its opening.
+- SafetyFilter: 21/21 offline tests (`hs_py tests/test_safety.py`).
+
+Learned on the real arm:
+- Elbow (joint3) carries up to ~10 Nm and sags up to ~10 deg with the forearm held out (no gravity compensation;
+  Damiao POS_VEL has no torque feed-forward).
+- The rest side of joint2/3 needs only a 3 deg margin; with 10 deg the arm hovered above rest and park never finished.
+- Ctrl-C = emergency exit: motors stay ON holding (CAN timeout register is 0). Restart the program -> it takes over
+  in HOLD -> press p.
+- NEVER run Seeed's example/4_pos_vel_control.py on this arm: it commands motor zero right after enable
+  (base would swing ~94 deg).
+
+Next options:
+1. Speed steps: 15 -> 20 -> 30 deg/s after clean sessions.
+2. Elbow sag: gravity compensation (MIT mode + SDK gravity model, or stiffer POS_VEL gains) - needs care, test in shadow first.
+3. Data collection on the real arm through Holoscan: leader teleop + camera (Dell webcam / USB camera) -> LeRobot dataset.
+4. Policy on the GB10 (ACT / SmolVLA) through the same SafetyFilter: camera lane + inference lane + control lane in Holoscan.
+5. Scripted pick on the real arm (known cube spot), slow, after 1-2.
