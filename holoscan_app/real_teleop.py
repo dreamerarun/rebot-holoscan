@@ -10,6 +10,7 @@ Keys (type + Enter in this terminal):
     a  re-arm after a HOLD (then align the leader again)
     s  soft stop: HOLD where it is
     p  park: fold slowly to the rest pose, then switch the motors off
+    o  switch off now (only allowed when the arm is resting folded)
     q  park, switch off and quit            (Ctrl-C does the same)
 Gripper: FORCE_POS with a current cap (--grip-force, default 0.10 = Seeed default); --no-gripper leaves it off.
 
@@ -109,6 +110,12 @@ class LiveArmOp(Operator):
         st0 = self.arm.read()
         on = [n for n, s in st0.items() if s is not None and s.status_code == 1 and n != "gripper"]
         m0 = measured_q7(self.rcfg, st0)
+        if on and m0 is not None and self._resting(m0):
+            self.arm.enabled = True                      # so disable_arm() really sends disable
+            self.arm.grip_enabled = "gripper" in [n for n, s in st0.items() if s is not None and s.status_code == 1]
+            self.arm.disable_arm(say)
+            say(f"[live] motors were ON ({', '.join(on)}) with the arm resting folded: switched them OFF")
+            on = []
         if on and m0 is not None:
             self.arm.enabled = True
             self.filter = self._new_filter(m0, self.vmax)
@@ -152,6 +159,10 @@ class LiveArmOp(Operator):
         d = np.degrees(np.abs(self.target[:6] - measured[:6]))
         j = int(d.argmax())
         return d.max() <= 10.0, f"joint{j + 1} is {d[j]:.0f} deg away"
+
+    def _resting(self, measured):
+        """Folded on the rest stops: shoulder and elbow within 8 deg of 0 (their weight sits on the stops)."""
+        return measured is not None and abs(np.degrees(measured[1])) < 8.0 and abs(np.degrees(measured[2])) < 8.0
 
     def _at_rest(self, measured):
         return np.degrees(np.abs(measured[:6] - rest_pose()[:6])).max() < 4.0
@@ -247,6 +258,15 @@ class LiveArmOp(Operator):
         elif k == "s" and self.filter is not None and self.state == "ON":
             self.filter.soft_stop(now, measured)
             say("[live] soft stop: HOLDING")
+        elif k == "o":
+            if self.state == "OFF":
+                say("[live] already off")
+            elif not self._resting(measured):
+                say("[live] refusing to switch off: the arm is not resting folded (use p to park first)")
+            else:
+                self.arm.disable_arm(say)
+                self.state = "OFF"
+                say("[live] switched OFF (arm resting folded). Type e to enable again.")
         elif k == "q":
             if self.state == "OFF":
                 self._quit()
@@ -326,7 +346,7 @@ def key_file(path):
                 time.sleep(0.05)
                 continue
             k = line.strip().lower()[:1]
-            if k in ("e", "a", "s", "p", "q"):
+            if k in ("e", "a", "s", "p", "q", "o"):
                 say(f"[live] key '{k}' from {path}")
                 KEYS.append(k)
 
@@ -334,7 +354,7 @@ def key_file(path):
 def keyboard():
     for line in sys.stdin:
         k = line.strip().lower()[:1]
-        if k in ("e", "a", "s", "p", "q"):
+        if k in ("e", "a", "s", "p", "q", "o"):
             KEYS.append(k)
 
 

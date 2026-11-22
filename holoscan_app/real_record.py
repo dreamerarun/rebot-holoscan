@@ -217,7 +217,7 @@ class RecordApp(Application):
 def route(k):
     if k in ("n", "x"):
         REC_KEYS.append(k)
-    elif k in ("e", "a", "s", "p", "q"):
+    elif k in ("e", "a", "s", "p", "q", "o"):
         rt.KEYS.append(k)
 
 
