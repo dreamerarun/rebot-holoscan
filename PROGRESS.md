@@ -63,3 +63,47 @@ windows bigger than 1024x768 get squashed by GNOME on the 1080p monitor.
 3. Compare real joint angles with the sim at the same pose (directions, zero offsets).
 4. Add `RealArmOp` next to `SimOp`: same limits, lower speed cap, slow start-up move to the leader pose.
 5. First real run is started by the user, low speed, hand on the power switch. Scripted pick on the real arm only after that.
+
+## Real-arm safety rules (user requirement 2026-11-22: "ensure safer robot movements, I do not want to damage the robot")
+
+Nothing moves until every stage below has passed. The user enables motors and starts every motion run; Claude only reads.
+
+**Stage 0 - read only (motors never enabled)**
+- All 7 Damiao motors answer; read position, velocity, torque, temperature, bus voltage; no errors.
+- User moves the arm slowly by hand (motors off). Compare real joint angles with the sim/FK at the same pose:
+  directions, zero offsets, limits. Fix the mapping before anything is enabled.
+
+**Stage 1 - shadow mode (motors still off)**
+- Full pipeline runs: leader -> MapOp -> SafetyOp -> RealArmOp, but RealArmOp only logs what it WOULD send.
+- Check the logged commands against the real arm position for a few minutes of leader motion.
+
+**SafetyOp: the single checkpoint every real-arm command passes**
+- Joint limits = URDF limits minus a 10 deg margin.
+- Workspace: FK of the TCP must stay above the table (z >= 3 cm) and outside a cylinder around the base.
+- Speed: max 30 deg/s per joint at first (leader teleop in sim allows 720 deg/s), plus an acceleration ramp.
+  Raised in steps (30 -> 60 -> 90 deg/s) only after a clean session at each step.
+- Motor-side cap as well: POS_VEL mode with a low vlim, so the motor itself refuses to go faster
+  even if our software misbehaves.
+- Gripper: low MIT gain and a torque limit, so it cannot crush or overload the 4310.
+
+**Start-up (the most dangerous moment)**
+- On enable, the first target is the CURRENT measured position of the arm (no jump).
+- Alignment gate: the follower only starts following once the leader is within 10 deg of the follower on every joint;
+  until then it holds. Then it moves to the leader over >= 3 s.
+- First enable: user supports the arm by hand, power switch within reach.
+
+**While running: faults HOLD, they do not drop**
+- Disabling Damiao motors makes the arm fall under gravity, so a fault means "hold the current position", not "disable".
+- Hold triggers: leader data older than 100 ms; motor feedback older than 50 ms or a bus error;
+  tracking error > 15 deg for > 0.2 s (likely collision); torque above a per-joint threshold;
+  motor temperature > 60 C; any limit/workspace violation.
+- After a hold the user must re-arm explicitly (key press); it never resumes by itself.
+- Arm/disarm and a soft stop key in the terminal; the physical power switch stays the real emergency stop.
+
+**Shutdown**
+- "Park": slow move (<= 20 deg/s) to the rest pose, check it is resting, only then disable.
+
+**Rules**
+- Real arm runs with the control lane only; no DNN/vision in the same process until teleop is proven.
+- Every command and state is logged (logs/real_*.jsonl) for review.
+- Scripted pick on the real arm only after leader teleop is clean, at reduced speed, with the cube in a known safe spot.
