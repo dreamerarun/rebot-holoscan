@@ -41,7 +41,8 @@ from rebot_sim_pipeline.staging import EpisodeStager, staged_episodes
 
 ROOT = Path(__file__).resolve().parents[1]
 REC_KEYS = []
-FPS = 30
+CAM_FPS = 30     # what we ask the camera for
+FPS = 15         # recorded dataset rate: frames are taken on a fixed 15 Hz clock
 
 
 class CameraOp(Operator):
@@ -60,15 +61,21 @@ class CameraOp(Operator):
         self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
-        self.cap.set(cv2.CAP_PROP_FPS, FPS)
+        self.cap.set(cv2.CAP_PROP_FPS, CAM_FPS)
+        self.t_cam, self.n_cam = time.perf_counter(), 0
 
     def stop(self):
         self.cap.release()
 
     def compute(self, op_input, op_output, context):
-        ok, bgr = self.cap.read()            # blocks until the next camera frame (~33 ms)
+        ok, bgr = self.cap.read()            # blocks until the next camera frame
         if ok:
-            op_output.emit({"t": time.perf_counter(), "rgb": cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)}, "frame")
+            now = time.perf_counter()
+            self.n_cam += 1
+            cam_fps = self.n_cam / max(now - self.t_cam, 1e-3)
+            if now - self.t_cam > 5.0:
+                self.t_cam, self.n_cam = now, 0
+            op_output.emit({"t": now, "rgb": cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB), "cam_fps": cam_fps}, "frame")
 
 
 class RecorderOp(Operator):
@@ -87,6 +94,7 @@ class RecorderOp(Operator):
         self.t_start = None
         self.msg, self.msg_t = "", 0.0
         self.max_s = 90.0
+        self.t_next = None
         print(f"[rec] staging -> {self.staging} ({self.saved} episodes already there)", flush=True)
 
     def stop(self):
@@ -100,6 +108,8 @@ class RecorderOp(Operator):
 
     def _save(self):
         n = self.stager.frames
+        elapsed = time.perf_counter() - self.t_start
+        real_fps = n / max(elapsed, 1e-3)
         if n < FPS:  # under 1 s: not a demonstration
             self.stager.discard()
             self._note(f"episode too short ({n} frames) - discarded")
@@ -108,9 +118,11 @@ class RecorderOp(Operator):
             path = self.stager.finish({
                 "task": self.task, "fps": FPS, "resolution": [w, h], "robot_type": "seeed_b601_dm_follower",
                 "feature_names": [f"{j}.pos" for j in JOINT_NAMES], "camera_keys": {"front": "front"},
-                "source": "real", "recorder": "rebot-holoscan real_record.py", "success": True})
+                "source": "real", "recorder": "rebot-holoscan real_record.py", "success": True,
+                "real_fps": round(real_fps, 2), "duration_s": round(elapsed, 2)})
             self.saved += 1
-            self._note(f"SAVED episode {self.saved} ({n} frames, {n / FPS:.1f} s) -> {path.name}")
+            warn = "" if abs(real_fps - FPS) / FPS <= 0.05 else f"  WARNING: real rate {real_fps:.1f} fps != {FPS}"
+            self._note(f"SAVED episode {self.saved} ({n} frames, {elapsed:.1f} s, {real_fps:.1f} fps) -> {path.name}{warn}")
         self.t_start = None
 
     def compute(self, op_input, op_output, context):
@@ -131,6 +143,7 @@ class RecorderOp(Operator):
                 else:
                     self.stager.start(self.saved + 1)
                     self.t_start = time.perf_counter()
+                    self.t_next = self.t_start
                     self._note(f"RECORDING episode {self.saved + 1}")
             elif k == "x" and self.stager.active:
                 self.stager.discard()
@@ -142,7 +155,10 @@ class RecorderOp(Operator):
                 self.stager.discard()
                 self.t_start = None
                 self._note("arm left FOLLOW (hold/park) - episode discarded")
-            else:
+            elif f["t"] >= self.t_next:          # fixed 15 Hz clock (camera may deliver 15-30 fps)
+                self.t_next += 1.0 / FPS
+                if f["t"] - self.t_next > 2.0 / FPS:   # fell behind (camera stalled): resync, the rate check will show it
+                    self.t_next = f["t"] + 1.0 / FPS
                 cmd, meas = last["cmd"], last["measured"]
                 self.stager.add({"front": rgb},
                                 action=arm_action(cmd[:6], cmd[6]), state=arm_state(meas[:6], meas[6]),
@@ -161,7 +177,7 @@ class RecorderOp(Operator):
             head, col = f"ARM {last['mode']} - {'type a to re-arm' if last['mode'] == 'HOLD' else 'wait'}", [1.0, 0.8, 0.2, 1.0]
         else:
             head, col = "READY - place the cube, then type n to record", [0.3, 1.0, 0.4, 1.0]
-        info = [f"saved: {self.saved} episodes   task: {self.task}",
+        info = [f"saved: {self.saved} episodes   camera {f.get('cam_fps', 0):4.1f} fps, recording {FPS} fps   task: {self.task}",
                 "n start/stop+save   x discard   s hold   a re-arm   p park   q quit"]
         if self.msg and time.perf_counter() - self.msg_t < 4.0:
             info.insert(0, self.msg)
