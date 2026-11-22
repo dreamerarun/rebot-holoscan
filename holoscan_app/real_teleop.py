@@ -99,6 +99,7 @@ class LiveArmOp(Operator):
         self.t_print = 0.0
         self.parked_since = None
         self.quit_after_park = False
+        self.last = None
         self.log = open(f"../logs/real_teleop_{time.strftime('%Y%m%d_%H%M%S')}.jsonl", "w")
         st0 = self.arm.read()
         on = [n for n, s in st0.items() if s is not None and s.status_code == 1 and n != "gripper"]
@@ -190,6 +191,10 @@ class LiveArmOp(Operator):
                     if self.quit_after_park:
                         self._quit()
 
+        # latest snapshot for other operators (e.g. the recorder)
+        self.last = {"t": now, "state": self.state, "mode": None if self.filter is None else self.filter.mode,
+                     "cmd": None if cmd is None else cmd.copy(),
+                     "measured": None if measured is None else measured.copy(), "vmax": self.vmax}
         show = cmd if cmd is not None else measured
         if show is not None:
             op_output.emit(show, "show")
