@@ -87,7 +87,9 @@ class LiveArmOp(Operator):
     # ------------------------------------------------------------ lifecycle
     def start(self):
         self.arm = RealArmLive(self.rcfg, dry=self.dry)
-        self.arm.vlim = math.radians(self.vmax) * 1.2          # motor-side cap just above the software cap
+        # motor-side cap: 2x the software cap. The Damiao POS_VEL loop trails its target by ~9 deg in motion
+        # (more under gravity), so at 1.2x the joints could not catch up and the tracking check froze the arm.
+        self.arm.vlim = math.radians(self.vmax) * 2.0
         self.arm.grip_ratio = self.grip_force
         self.arm.open()
         bad = self.arm.check_modes()
