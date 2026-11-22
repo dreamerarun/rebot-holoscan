@@ -23,6 +23,6 @@ gripper:
   motor_id: 0x07
   feedback_id: 0x17
   model: "4310"
-  closed_deg: 4.05     # reading with the gripper closed (measured)
-  open_deg: null       # fill in from the hand check (open the gripper fully by hand)
+  closed_deg: 0.0      # closed reads about -6..+4 (measured by hand, motors off)
+  open_deg: -248.0     # fully open by hand read -248.5 (Seeed config range: -270..0)
   sim_open_m: 0.05
