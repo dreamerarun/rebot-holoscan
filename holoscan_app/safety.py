@@ -25,6 +25,9 @@ ARM = 6
 class SafetyParams:
     limits: list                       # [(lo, hi)] rad for joint1..6 (URDF)
     margin_deg: float = 10.0
+    # joint2/3 upper limit (0) is the folded rest stop: only 3 deg margin there, so a folded leader
+    # brings the arm down to rest instead of hovering 10 deg above it (elbow carrying the forearm)
+    margin_hi_deg: dict = field(default_factory=lambda: {1: 3.0, 2: 3.0})
     vmax_deg_s: float = 30.0
     amax_deg_s2: float = 120.0
     blend_vmax_deg_s: float = 10.0
@@ -50,7 +53,7 @@ class SafetyFilter:
         self.fk = fk                       # q_arm -> TCP xyz (for workspace checks); None = skip
         m = math.radians(p.margin_deg)
         self.lo = np.array([lo + m for lo, _ in p.limits])
-        self.hi = np.array([hi - m for _, hi in p.limits])
+        self.hi = np.array([hi - math.radians(p.margin_hi_deg.get(i, p.margin_deg)) for i, (_, hi) in enumerate(p.limits)])
         self.mode = "WAIT_ALIGN"
         self.reason = "waiting for the leader to match the arm"
         self.cmd = None                    # last command (7: 6 arm + gripper finger)

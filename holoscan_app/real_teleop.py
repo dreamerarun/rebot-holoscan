@@ -11,7 +11,7 @@ Keys (type + Enter in this terminal):
     s  soft stop: HOLD where it is
     p  park: fold slowly to the rest pose, then switch the motors off
     q  park, switch off and quit            (Ctrl-C does the same)
-The gripper motor is NOT enabled in this version.
+Gripper: FORCE_POS with a current cap (--grip-force, default 0.10 = Seeed default); --no-gripper leaves it off.
 
     ./run_real_teleop.sh                  # first session: 20 deg/s
     ./run_real_teleop.sh --vmax 30
@@ -72,8 +72,9 @@ class LeaderOp(Operator):
 
 
 class LiveArmOp(Operator):
-    def __init__(self, fragment, *args, rcfg, limits, vmax, dry, **kw):
+    def __init__(self, fragment, *args, rcfg, limits, vmax, dry, with_gripper=True, grip_force=0.10, **kw):
         self.rcfg, self.limits, self.vmax, self.dry = rcfg, limits, vmax, dry
+        self.with_gripper, self.grip_force = with_gripper, grip_force
         super().__init__(fragment, *args, **kw)
 
     def setup(self, spec: OperatorSpec):
@@ -84,6 +85,7 @@ class LiveArmOp(Operator):
     def start(self):
         self.arm = RealArmLive(self.rcfg, dry=self.dry)
         self.arm.vlim = math.radians(self.vmax) * 1.2          # motor-side cap just above the software cap
+        self.arm.grip_ratio = self.grip_force
         self.arm.open()
         bad = self.arm.check_modes()
         if bad:
@@ -170,7 +172,9 @@ class LiveArmOp(Operator):
             if cmd is not None:
                 self.arm.send(cmd)
         elif self.state == "PARKING":
-            cmd = self.park.step(now, 1 / RATE, rest_pose(), 0.0, measured, f_age, health)
+            rest = rest_pose()
+            rest[6] = self.park.cmd[6]          # park does not close/open the gripper
+            cmd = self.park.step(now, 1 / RATE, rest, 0.0, measured, f_age, health)
             if cmd is not None:
                 self.arm.send(cmd)
             if self.park.mode == "HOLD":
@@ -217,6 +221,10 @@ class LiveArmOp(Operator):
                 return
             ok, msg = self.arm.enable_arm(say)
             say(f"[live] {msg}")
+            if ok and self.with_gripper:
+                gok, gmsg = self.arm.enable_gripper(say)
+                say(f"[live] {gmsg}")
+                ok = ok and gok
             m2 = measured_q7(self.rcfg, self.arm.read())          # start the filter exactly where the arm is now
             self.filter = self._new_filter(m2 if m2 is not None else measured, self.vmax)
             self.state = "ON"
@@ -279,18 +287,37 @@ class SimOp(Operator):
 
 
 class RealTeleopApp(Application):
-    def __init__(self, cfg, rcfg, port, vmax, dry):
+    def __init__(self, cfg, rcfg, port, vmax, dry, with_gripper=True, grip_force=0.10):
         self.cfg, self.rcfg, self.port, self.vmax, self.dry = cfg, rcfg, port, vmax, dry
+        self.with_gripper, self.grip_force = with_gripper, grip_force
         super().__init__()
 
     def compose(self):
         limits = [tuple(self.cfg["sim_limits"][f"joint{i}"]) for i in range(1, 7)]
         leader = LeaderOp(self, PeriodicCondition(self, recess_period=timedelta(seconds=1 / RATE)),
                           cfg=self.cfg, port=self.port, name="leader")
-        arm = LiveArmOp(self, rcfg=self.rcfg, limits=limits, vmax=self.vmax, dry=self.dry, name="live_arm")
+        arm = LiveArmOp(self, rcfg=self.rcfg, limits=limits, vmax=self.vmax, dry=self.dry,
+                        with_gripper=self.with_gripper, grip_force=self.grip_force, name="live_arm")
         sim = SimOp(self, cfg=self.cfg, name="sim")
         self.add_flow(leader, arm)
         self.add_flow(arm, sim)
+
+
+def key_file(path):
+    """Keys appended to a file (echo s >> keys) - lets a second shell control the arm."""
+    import os
+    open(path, "a").close()
+    with open(path) as f:
+        f.seek(0, os.SEEK_END)
+        while True:
+            line = f.readline()
+            if not line:
+                time.sleep(0.05)
+                continue
+            k = line.strip().lower()[:1]
+            if k in ("e", "a", "s", "p", "q"):
+                say(f"[live] key '{k}' from {path}")
+                KEYS.append(k)
 
 
 def keyboard():
@@ -305,13 +332,22 @@ def main():
     ap.add_argument("--vmax", type=float, default=20.0, help="deg/s software speed cap (max 45)")
     ap.add_argument("--dry", action="store_true", help="never send anything to the motors")
     ap.add_argument("--leader-port", default="/dev/ttyUSB0")
+    ap.add_argument("--no-gripper", action="store_true", help="leave the gripper motor off")
+    ap.add_argument("--grip-force", type=float, default=0.10, help="gripper FORCE_POS current cap 0.03-0.2 (Seeed default 0.1)")
+    ap.add_argument("--keys-file", help="also accept keys appended to this file (echo s >> FILE)")
     a = ap.parse_args()
     if not 1.0 <= a.vmax <= 45.0:
         sys.exit("--vmax must be between 1 and 45 deg/s")
-    if not sys.stdin.isatty() and not a.dry:
-        sys.exit("run this in a terminal: the keys e/a/s/p/q are needed to control the arm")
-    threading.Thread(target=keyboard, daemon=True).start()
-    RealTeleopApp(load_cfg(), load_real_cfg(), find_leader_port(a.leader_port), a.vmax, a.dry).run()
+    if not sys.stdin.isatty() and not a.dry and not a.keys_file:
+        sys.exit("run this in a terminal (or with --keys-file): the keys e/a/s/p/q control the arm")
+    if sys.stdin.isatty():
+        threading.Thread(target=keyboard, daemon=True).start()
+    if a.keys_file:
+        threading.Thread(target=key_file, args=(a.keys_file,), daemon=True).start()
+    if not 0.03 <= a.grip_force <= 0.2:
+        sys.exit("--grip-force must be between 0.03 and 0.2")
+    RealTeleopApp(load_cfg(), load_real_cfg(), find_leader_port(a.leader_port), a.vmax, a.dry,
+                  not a.no_gripper, a.grip_force).run()
 
 
 if __name__ == "__main__":

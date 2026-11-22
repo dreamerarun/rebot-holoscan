@@ -120,6 +120,13 @@ cmds, _ = run(f, lambda t: start if t < 0.5 else down, 10.0, measured=start)
 z_end = 0.10 - 0.2 * (cmds[-1][1] - start[1])
 check("never below 3 cm", z_end >= 0.03 - 1e-9, f"z={z_end * 100:.1f} cm, mode {f.mode}")
 
+# 10b folded side of joint2/3: only 3 deg margin (arm can come down to rest)
+f = new()
+up = start.copy()
+cmds, _ = run(f, lambda t: start if t < 0.5 else np.r_[start[0], 0.0, 0.0, start[3:]], 10.0, measured=start)
+check("joint2/3 fold down to -3 deg (rest side margin)", abs(math.degrees(cmds[-1][1]) + 3) < 0.2 and abs(math.degrees(cmds[-1][2]) + 3) < 0.2,
+      f"j2 {math.degrees(cmds[-1][1]):.1f}, j3 {math.degrees(cmds[-1][2]):.1f}")
+
 # 11 gripper speed limit 3 cm/s
 f = new()
 g_open = start.copy(); g_open[6] = 0.05
