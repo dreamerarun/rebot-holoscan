@@ -29,7 +29,7 @@ from datetime import timedelta
 
 import numpy as np
 from holoscan.conditions import PeriodicCondition
-from holoscan.core import Application, Operator, OperatorSpec
+from holoscan.core import Application, IOSpec, Operator, OperatorSpec
 
 from common import LeaderDevice, Mapper, SimLink, find_leader_port, load_cfg
 from kinematics import RebotKinematics
@@ -78,7 +78,10 @@ class LiveArmOp(Operator):
         super().__init__(fragment, *args, **kw)
 
     def setup(self, spec: OperatorSpec):
-        spec.input("target")
+        # POP: when a new leader reading arrives and the queue is full, drop the OLD one, so the arm
+        # always uses the newest reading (with the default policy a 1.2 s enable left a stale reading
+        # at the head of the queue and the safety filter correctly froze with "leader data stale")
+        spec.input("target", policy=IOSpec.QueuePolicy.POP)
         spec.output("show")
 
     # ------------------------------------------------------------ lifecycle
@@ -230,6 +233,7 @@ class LiveArmOp(Operator):
                 gok, gmsg = self.arm.enable_gripper(say)
                 say(f"[live] {gmsg}")
                 ok = ok and gok
+            self.t_target = time.perf_counter()                   # enable took ~1 s: do not count it as leader silence
             m2 = measured_q7(self.rcfg, self.arm.read())          # start the filter exactly where the arm is now
             self.filter = self._new_filter(m2 if m2 is not None else measured, self.vmax)
             self.state = "ON"
