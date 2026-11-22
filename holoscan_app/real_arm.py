@@ -1,23 +1,16 @@
-"""Real reBot B601-DM access.
+"""Real reBot B601-DM, READ-ONLY access.
 
-Stage 0/1 (now): READ ONLY. Importing this module installs a guard on motorbridge that
-blocks every call able to enable, move, zero, change mode or write a motor. The guard is
-process-wide and cannot be switched off from here; the later command path will live in a
-separate module that the user runs explicitly.
+Importing this module installs a guard on motorbridge that blocks every call able to enable,
+move, zero, change mode or write a motor (process-wide). Used by the mirror and shadow tools.
+The live command path is real_live.py, which never imports this module.
 """
 from __future__ import annotations
 
-import math
 import time
-from pathlib import Path
 
-import numpy as np
-import yaml
 from motorbridge import Controller, Motor
 
-ROOT = Path(__file__).resolve().parents[1]
-STATUS = {0: "disabled", 1: "ENABLED", 8: "over-voltage", 9: "under-voltage", 10: "over-current",
-          11: "MOS over-temp", 12: "rotor over-temp", 13: "comm lost", 14: "overload"}
+from real_common import STATUS, load_real_cfg, measured_q7, motor_to_sim  # noqa: F401 (re-exported)
 
 _FORBIDDEN_MOTOR = ["enable", "disable", "ensure_mode", "send_mit", "send_pos_vel", "send_vel", "send_force_pos",
                     "set_zero_position", "store_parameters", "write_register_f32", "write_register_u32",
@@ -36,10 +29,6 @@ for _n in _FORBIDDEN_MOTOR:
 for _n in _FORBIDDEN_CTRL:
     setattr(Controller, _n, _blocked(f"Controller.{_n}"))
 READ_ONLY = True
-
-
-def load_real_cfg(path=None):
-    return yaml.safe_load(Path(path or ROOT / "config" / "real_arm.yaml").read_text())
 
 
 class RealArmReader:
@@ -75,23 +64,3 @@ class RealArmReader:
                 pass
             time.sleep(0.001)
         return {n: m.get_state() for n, m in self.motors}
-
-
-def motor_to_sim(cfg, states):
-    """Motor readings -> sim joint targets (rad) + gripper finger (m). None where a motor did not answer."""
-    out = {}
-    for j in cfg["joints"]:
-        st = states.get(j["name"])
-        if st is None:
-            out[j["sim"]] = None
-            continue
-        out[j["sim"]] = j["direction"] * (st.pos - math.radians(j["zero_offset_deg"]))
-    g, st = cfg["gripper"], states.get("gripper")
-    if st is None or g.get("open_deg") is None:
-        out["finger_left"] = None
-    else:
-        lo, hi = math.radians(g["closed_deg"]), math.radians(g["open_deg"])
-        out["finger_left"] = float(np.clip((st.pos - lo) / (hi - lo), 0, 1)) * g["sim_open_m"]
-    if out.get("finger_left") is not None:
-        out["finger_right"] = -out["finger_left"]
-    return out
