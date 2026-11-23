@@ -80,11 +80,9 @@ class ScriptOp(Operator):
                 self._next(None)
 
         if self.state == "WAIT_ARM":
-            if meas is not None:
-                self._emit(op_output, meas)
-            else:   # keep the arm operator ticking until it has its first reading
-                op_output.emit({"t": time.perf_counter(), "q": None, "ok": False}, "target")
             if last is not None and last.get("mode") == "FOLLOW" and meas is not None:
+                # plan BEFORE emitting: Holoscan delivers a message when compute() returns, so anything emitted
+                # before the ~1.4 s of planning would arrive 1.4 s old and the SafetyFilter would (rightly) HOLD
                 try:
                     self.segs = self.planner.calibration(meas, CAL_GRID, HANDOVER, PHOTO_Q)
                     rep = self.planner.validate(self.segs, meas)
@@ -95,6 +93,12 @@ class ScriptOp(Operator):
                     f"lowest planned gripper point {min(r[2] for r in rep[1:]) * 100:.1f} cm - validated, starting")
                 self.state, self.si, self.i = "RUN", 0, 0
                 say(f"[cal] > {self.segs[0].label}")
+                self._emit(op_output, meas)          # fresh timestamp, after planning
+                return
+            if meas is not None:
+                self._emit(op_output, meas)
+            else:   # keep the arm operator ticking until it has its first reading
+                op_output.emit({"t": time.perf_counter(), "q": None, "ok": False}, "target")
             return
 
         if self.state in ("ABORT", "DONE"):
