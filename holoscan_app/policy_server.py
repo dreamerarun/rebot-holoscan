@@ -33,6 +33,16 @@ def main():
     policy.eval()
     pre, post = make_pre_post_processors(policy.config, pretrained_path=a.ckpt,
                                          preprocessor_overrides={"device_processor": {"device": "cuda"}})
+    # warm-up: the first CUDA inference takes ~1.3 s (kernel selection) - do it now, not on the robot's first step
+    t0 = time.perf_counter()
+    with torch.inference_mode():
+        dummy = {"observation.state": torch.zeros(1, 7), "observation.images.front": torch.zeros(1, 3, 480, 640),
+                 "task": [TASK]}
+        for _ in range(3):
+            post(policy.select_action(pre(dummy)))
+            policy.reset()
+    torch.cuda.synchronize()
+    print(f"[policy] warm-up done in {time.perf_counter() - t0:.1f} s", flush=True)
     sock = zmq.Context().socket(zmq.REP)
     sock.bind(f"tcp://127.0.0.1:{a.port}")
     print(f"[policy] ACT from {a.ckpt} on cuda, chunk {policy.config.chunk_size}, "
