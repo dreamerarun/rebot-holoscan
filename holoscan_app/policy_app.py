@@ -42,7 +42,8 @@ ROOT = Path(__file__).resolve().parents[1]
 KEYS = []
 POLICY_HZ = 15                    # the dataset's rate: one policy step per 4 ticks of the 60 Hz loop
 STEP = int(round(RATE / POLICY_HZ))
-REACH_BOX = {"x": (0.08, 0.40), "y": (-0.32, 0.20), "z": (0.0, 0.40)}   # gripper must stay in here (cube zone + box)
+REACH_BOX = {"x": (0.08, 0.40), "y": (-0.32, 0.26), "z": (0.0, 0.40)}   # gripper must stay in here: cube zone, box
+                                  # (y -0.22..-0.24) and the observe pose (0.12, 0.21, 0.21)
 MAX_JUMP_DEG = 20.0               # one policy step may not move any joint more than this
 LIMIT_STOP = math.radians(10.0)   # an action more than this beyond a joint limit stops the policy
 MAX_RUN_S = 120.0
