@@ -266,9 +266,12 @@ class CollectorOp(Operator):
                 if self.box_ref is None:
                     self.box_ref = bxy
                 why = self._check(cxy, bxy)
-            if why is None and not self.sim:     # two detections in a row must agree within 5 mm
-                if self.prev_det is None or math.hypot(cxy[0] - self.prev_det[0], cxy[1] - self.prev_det[1]) > 0.005:
+            if why is None and not self.sim:     # two detections 0.5 s apart must agree within 1 cm
+                if self.prev_det is None or math.hypot(cxy[0] - self.prev_det[0], cxy[1] - self.prev_det[1]) > 0.010:
+                    jump = None if self.prev_det is None else math.hypot(cxy[0] - self.prev_det[0], cxy[1] - self.prev_det[1])
                     self.prev_det = cxy
+                    self._status("checking the cube position", "two detections must agree within 1 cm"
+                                 + ("" if jump is None else f" (last jump {jump * 1000:.0f} mm - is something moving?)"))
                     return
             if why is not None:
                 self._status("waiting for a valid cube", why)
