@@ -26,6 +26,8 @@ Z_PRE = 0.10        # above an object before descending
 Z_GRASP = 0.025     # cube (4 cm) centre ~0.02: pads cover 1-5 cm, fingertips ~1 cm above the table
 Z_PLACE = 0.030     # release height: the cube drops ~5 mm
 Z_RETREAT = 0.12
+Z_HIGH = 0.15       # approach/leave objects from here (fingertips ~13.5 cm): joint swings at 10 cm brushed the cube
+Z_SWING = 0.12      # joint-space swings near objects never take the TCP below this
 Z_MIN_NEAR = 0.022  # hard floor while near the table
 Z_MIN_TRANSIT = 0.05
 GRIP_OPEN = 0.030   # finger joint (m)
@@ -233,33 +235,37 @@ class MotionPlanner:
                               Z_MIN_NEAR, event="wait_key:g"))
         segs.append(self.gripper("close on the cube", q, GRIP_HANDOVER, GRIP_CLOSE, 1.4))
         segs.append(self.hold("check the grasp", q, GRIP_CLOSE, 0.5, Z_MIN_NEAR, event="check_grasp"))
-        segs.append(self.vertical("lift", hx, hy, Z_GRASP, Z_PRE, q, GRIP_CLOSE, V_UP, Z_MIN_NEAR))
+        segs.append(self.vertical("lift", hx, hy, Z_GRASP, Z_HIGH, q, GRIP_CLOSE, V_UP, Z_MIN_NEAR))
         q = segs[-1].q[-1][:ARM]
         for i, (x, y) in enumerate(grid, 1):
-            q_pre = self.ik(self.pose(x, y, Z_PRE), q)
+            q_pre = self.ik(self.pose(x, y, Z_HIGH), q)
             segs.append(self.joint_move(f"point {i}: carry to ({x:.2f}, {y:+.2f})", q, q_pre, GRIP_CLOSE))
-            segs.append(self.vertical(f"point {i}: lower", x, y, Z_PRE, Z_PLACE, q_pre, GRIP_CLOSE, V_DOWN, Z_MIN_NEAR))
+            segs[-1].z_min = Z_SWING
+            segs.append(self.vertical(f"point {i}: lower", x, y, Z_HIGH, Z_PLACE, q_pre, GRIP_CLOSE, V_DOWN, Z_MIN_NEAR))
             q = segs[-1].q[-1][:ARM]
             segs.append(self.gripper(f"point {i}: release", q, GRIP_CLOSE, GRIP_OPEN, 0.8))
             segs.append(self.hold(f"point {i}: settle", q, GRIP_OPEN, 0.4, Z_MIN_NEAR))
-            segs.append(self.vertical(f"point {i}: rise", x, y, Z_PLACE, Z_RETREAT, q, GRIP_OPEN, V_UP, Z_MIN_NEAR))
+            segs.append(self.vertical(f"point {i}: rise", x, y, Z_PLACE, Z_HIGH, q, GRIP_OPEN, V_UP, Z_MIN_NEAR))
             q = segs[-1].q[-1][:ARM]
             segs.append(self.joint_move(f"point {i}: out of the camera view", q, photo_q, GRIP_OPEN))
+            segs[-1].z_min = Z_SWING
             photo = self.hold(f"point {i}: photo", photo_q, GRIP_OPEN, 1.0, event=f"photo:{i}")
             photo.info["xy"] = (x, y)
             segs.append(photo)
-            q_pre = self.ik(self.pose(x, y, Z_PRE), photo_q)
+            q_pre = self.ik(self.pose(x, y, Z_HIGH), photo_q)
             segs.append(self.joint_move(f"point {i}: back above the cube", photo_q, q_pre, GRIP_OPEN))
-            segs.append(self.vertical(f"point {i}: descend", x, y, Z_PRE, Z_GRASP, q_pre, GRIP_OPEN, V_DOWN, Z_MIN_NEAR))
+            segs[-1].z_min = Z_SWING
+            segs.append(self.vertical(f"point {i}: descend", x, y, Z_HIGH, Z_GRASP, q_pre, GRIP_OPEN, V_DOWN, Z_MIN_NEAR))
             q = segs[-1].q[-1][:ARM]
             segs.append(self.gripper(f"point {i}: grasp", q, GRIP_OPEN, GRIP_CLOSE, 1.2))
             segs.append(self.hold(f"point {i}: check the grasp", q, GRIP_CLOSE, 0.5, Z_MIN_NEAR, event="check_grasp"))
-            segs.append(self.vertical(f"point {i}: lift", x, y, Z_GRASP, Z_PRE, q, GRIP_CLOSE, V_UP, Z_MIN_NEAR))
+            segs.append(self.vertical(f"point {i}: lift", x, y, Z_GRASP, Z_HIGH, q, GRIP_CLOSE, V_UP, Z_MIN_NEAR))
             q = segs[-1].q[-1][:ARM]
         # put the cube back at the handover point and go home
-        q_pre_h = self.ik(self.pose(hx, hy, Z_PRE), q)
+        q_pre_h = self.ik(self.pose(hx, hy, Z_HIGH), q)
         segs.append(self.joint_move("back to the handover point", q, q_pre_h, GRIP_CLOSE))
-        segs.append(self.vertical("lower", hx, hy, Z_PRE, Z_PLACE, q_pre_h, GRIP_CLOSE, V_DOWN, Z_MIN_NEAR))
+        segs[-1].z_min = Z_SWING
+        segs.append(self.vertical("lower", hx, hy, Z_HIGH, Z_PLACE, q_pre_h, GRIP_CLOSE, V_DOWN, Z_MIN_NEAR))
         q = segs[-1].q[-1][:ARM]
         segs.append(self.gripper("release", q, GRIP_CLOSE, GRIP_OPEN, 0.8))
         segs.append(self.vertical("rise", hx, hy, Z_PLACE, Z_RETREAT, q, GRIP_OPEN, V_UP, Z_MIN_NEAR))
