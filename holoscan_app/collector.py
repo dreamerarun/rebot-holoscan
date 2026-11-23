@@ -82,6 +82,26 @@ class CollectorOp(Operator):
         if last is not None:
             rc.STATUS["last"] = last
 
+    def _roi(self, shape):
+        """Image mask: the cube zone + 4 cm margin, plus a 9 cm circle around the box (for the success check)."""
+        if getattr(self, "_roi_mask", None) is not None:
+            return self._roi_mask
+        m = np.zeros(shape[:2], np.uint8)
+        xs, ys, d = ZONE["x"], ZONE["y"], 0.04
+        poly = [self._px(x, y) for x, y in [(xs[0] - d, ys[0] - d), (xs[0] - d, ys[1] + d),
+                                             (xs[1] + d, ys[1] + d), (xs[1] + d, ys[0] - d)]]
+        cv2.fillPoly(m, [np.array(poly, np.int32)], 255)
+        if self.box_ref is not None:
+            circ = [self._px(self.box_ref[0] + 0.09 * math.cos(t), self.box_ref[1] + 0.09 * math.sin(t))
+                    for t in np.linspace(0, 2 * math.pi, 36)]
+            cv2.fillPoly(m, [np.array(circ, np.int32)], 255)
+            self._roi_mask = m          # final once the box is known
+        return m
+
+    def _px(self, x, y):
+        p = self.Hinv @ np.array([x, y, 1.0])
+        return [int(p[0] / p[2]), int(p[1] / p[2])]
+
     def _zone_overlay(self):
         xs, ys = ZONE["x"], ZONE["y"]
         poly = []
@@ -104,9 +124,12 @@ class CollectorOp(Operator):
         img = rc.CAM["frame"]
         if img is None:
             return None, None, None, "no camera frame"
-        cube, box = detect_cube(img), detect_box(img)
+        box = detect_box(img)
         if not box.ok:
             return None, None, None, f"box: {box.reason}"
+        if self.box_ref is None:
+            self.box_ref = tuple(pixel_to_table(self.H, box.centroid))
+        cube = detect_cube(img, self._roi(img.shape))
         if not cube.ok:
             return None, None, None, f"cube: {cube.reason}"
         cxy = pixel_to_table(self.H, cube.centroid)

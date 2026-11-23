@@ -55,10 +55,14 @@ CUBE_MIN_Y_FRAC = 0.30       # cubes lie on the table: ignore yellow above 30 % 
                              # (the arm's own yellow Seeed sticker shows up there in the folded pose)
 
 
-def detect_cube(bgr) -> Blob:
+def detect_cube(bgr, roi=None) -> Blob:
+    """roi: optional uint8 mask (255 = look here). The collector passes the cube zone + the box area, so other
+    yellow things (the arm's sticker, the power supply label) can never be taken for the cube."""
     hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
     mask = _mask(hsv, CUBE_HSV)
     mask[: int(CUBE_MIN_Y_FRAC * mask.shape[0])] = 0
+    if roi is not None:
+        mask = cv2.bitwise_and(mask, roi)
     blobs = _blobs(mask, 60)
     if not blobs:
         return Blob(False, "no yellow cube")
