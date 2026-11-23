@@ -459,14 +459,17 @@ class ViewOp(Operator):
                 lines.append(f"policy vs expert: joints max {e[:6].max():4.1f} deg   gripper {e[6]:4.1f} (of 45)")
         lines.append("path: green = gripper open, red = closing   magenta = current target")
         lines.append("keys: g run   x stop   r back to observe" + ("" if v["replay"] else "   s hold   p park   q quit"))
-        if self.record:                           # same picture as the window, text burnt in
+        if self.record and (v["state"] == "RUN" or getattr(self, "t_stop", 0) > time.time() - 2.0):
+            # record the policy run only (+2 s), on the wall clock, so it lines up with the plain-loop video
+            if v["state"] == "RUN":
+                self.t_stop = time.time()
             from videorec import put_lines
             rec = img.copy()
             put_lines(rec, lines)
             if self.writer is None:
                 from videorec import VideoRec
                 self.writer = VideoRec(self.record)
-            self.writer.write(rec)
+            self.writer.write(rec, wallclock=True)
         spec = HolovizOp.InputSpec("txt", "text")
         spec.text, spec.color, spec.priority = lines, [1.0, 1.0, 0.3, 1.0], 10
         op_output.emit({"video": cp.asarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB)),

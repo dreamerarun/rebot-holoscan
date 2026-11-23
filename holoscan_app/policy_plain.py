@@ -200,7 +200,7 @@ def main():
             cv2.imshow(win, img)
             cv2.waitKey(1)
             if rec:
-                rec.write(img)
+                rec.write(img, wallclock=True)    # stalls appear as frozen pictures, as long as they lasted
         time.sleep(max(0.0, 1 / RATE - (time.perf_counter() - now)))
 
     # ---- 3) hold where it is for a moment, report

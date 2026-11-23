@@ -9,7 +9,19 @@ class VideoRec:
     def __init__(self, path, fps=15):
         self.path, self.fps, self.p = path, fps, None
 
-    def write(self, bgr):
+    def write(self, bgr, wallclock=False):
+        """wallclock=True: the video follows real time - if the caller was stuck, the last picture is repeated for
+        as long as it was stuck (a frozen loop shows as a frozen picture instead of silently vanishing)."""
+        import time
+        n = 1
+        if wallclock:
+            now = time.perf_counter()
+            if not hasattr(self, "t0"):
+                self.t0, self.n = now, 0
+            n = max(0, int((now - self.t0) * self.fps) + 1 - self.n)
+            if n == 0:
+                return
+            self.n += n
         if self.p is None:
             h, w = bgr.shape[:2]
             self.p = subprocess.Popen(["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "bgr24",
@@ -17,7 +29,8 @@ class VideoRec:
                                        "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p", self.path],
                                       stdin=subprocess.PIPE)
         try:
-            self.p.stdin.write(bgr.tobytes())
+            for _ in range(n):
+                self.p.stdin.write(bgr.tobytes())
         except BrokenPipeError:
             pass
 
