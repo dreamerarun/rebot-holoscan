@@ -41,7 +41,7 @@ BOX_CLEAR = 0.12
 REACH = (0.15, 0.34)
 REC_FPS = 15
 GRASP_RANGE = (0.004, 0.025)
-REACH_BIAS = 0.010   # m: aim the grasp this much further out along the reach direction - the real arm (gravity
+REACH_BIAS = 0.020   # m (1 cm still landed ~1 cm short): aim the grasp this much further out along the reach direction - the real arm (gravity
                      # sag + calibration) landed ~1 cm short towards the base (user, 2026-11-23, twice)
 
 
@@ -281,6 +281,7 @@ class CollectorOp(Operator):
                     self._sim_reset()
                 return
             if not self.sim and REACH_BIAS:
+                say(f"[col]   detected cube at ({cxy[0]:.3f}, {cxy[1]:+.3f}), aiming {REACH_BIAS * 100:.0f} cm further out")
                 r = math.hypot(*cxy)
                 cxy = (cxy[0] * (r + REACH_BIAS) / r, cxy[1] * (r + REACH_BIAS) / r)
             try:
