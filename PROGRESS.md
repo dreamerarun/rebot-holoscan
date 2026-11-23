@@ -187,3 +187,13 @@ TODO next session (before any live run):
   Launch: ./run_policy_server.sh <ckpt>/pretrained_model ; ./open_policy_terminal.sh --replay 13 ; keys g run, x stop, r back to observe.
 - Replay ep13 (training data, open loop): final ckpt gripper vs expert mean 1.3 cm, 90% 2.3, max 3.0 (ckpt 5000: 2.3/4.0/5.3).
 - NOT yet run on the real arm (needs the user go-ahead + joint-2 cable check). No held-out episodes yet.
+
+## 2026-11-24 01:45 - SmolVLA trained on zeux; Holoscan vs plain-loop videos
+- SmolVLA: fine-tuned lerobot/smolvla_base on zeux (RTX PRO 6000, ~/smolvla-train, batch 32, 20k steps, GPU guard 88/82 C).
+  Copied to train/smolvla_zeux/{010000,020000}. dexstro had overheated (SoC 96-97 C) and powered off at 23:12 during the first attempt.
+- Replay ep13 (training data): SmolVLA 20k mean 0.6-0.7 cm (ACT 1.3 cm). SmolVLA chunk inference ~580 ms on the GB10.
+- Videos in videos/{act_final,smolvla_final}: compare_twin.mp4 (twin camera), compare_overlay.mp4 (camera + plan + timings),
+  compare_screen.mp4; left = Holoscan pipeline, right = plain Python loop; wall-clock (stalls show as frozen frames).
+  60 Hz arm loop largest gap: ACT 19 ms vs 83 ms; SmolVLA 18 ms vs 586 ms (17 freezes per episode).
+- record_all_videos.sh re-records both. train/ + videos/ now git-ignored (old commits still hold ACT checkpoints, .git 3.8 GB).
+- Not run live yet: SmolVLA on the real arm (needs the user + joint-2 cable check).
