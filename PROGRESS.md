@@ -169,7 +169,7 @@ BUG FOUND (fixed): robot_calibrate._finish imported calibrate_camera -> real_arm
   process-wide: after every calibration save all motor commands were blocked (this, not a USB glitch, made the earlier park
   "lag 17 deg"). solve() moved to homography.py; robot_calibrate imports that.
 TODO next session (before any live run):
-1. real_live.read(): use a fixed name list (after a failed reopen self.grip is None -> TypeError crash). Patch not applied yet.
-2. tests/test_live_imports.py: import the live modules and assert the guard is NOT installed (write + run).
+1. DONE: real_live.read() fixed name list (tests/test_reopen_fail.py)
+2. DONE: tests/test_live_imports.py passes
 3. Joint-2 power connector came loose twice (arm dropped once): keep it tied down; check before enabling.
 4. Then: collector with the new map, watch where the fingers land, 10 episodes.

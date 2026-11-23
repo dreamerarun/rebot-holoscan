@@ -19,7 +19,7 @@ def fake_open():
     arm.ctrl = types.SimpleNamespace(close=lambda: None, poll_feedback_once=lambda: None); opened.append(1)
 arm.open = fake_open; arm._poll = lambda w: None
 fake_open()
-arm.cfg = None
+arm.cfg = {"joints": [{"name": f"joint{i}"} for i in range(1, 7)]}
 real_live.sim_to_motor_rad = lambda cfg, q7: {f"joint{i}": 0.0 for i in range(1, 7)} | {"gripper": 0.0}
 
 arm.send([0.0] * 7)

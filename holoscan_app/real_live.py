@@ -56,7 +56,9 @@ class RealArmLive:
         """Feedback requests (motors reply with their state). {name: MotorState or None}.
         If the USB-CAN bridge drops (re-plug / USB reset), every motor reads None - the SafetyFilter then HOLDs
         (the motors themselves keep their last target: CAN timeout is off) - and we try to reopen once a second."""
-        names = [n for n, _ in self.arm + [self.grip]]
+        # fixed list from the config: after a failed reopen self.arm/self.grip are empty and the old
+        # [n for n, _ in self.arm + [self.grip]] crashed the arm operator (TypeError, 2026-11-23)
+        names = [j["name"] for j in self.cfg["joints"]] + ["gripper"]
         if self.ctrl is None:
             self._reopen()
             return {n: None for n in names}
@@ -196,7 +198,7 @@ class RealArmLive:
             self.enabled = False
             self.grip_enabled = False
             return
-        for _, m in self.arm + ([self.grip] if self.grip_enabled else []):
+        for _, m in self.arm + ([self.grip] if self.grip_enabled and self.grip else []):
             try:
                 m.disable()
             except Exception as exc:
