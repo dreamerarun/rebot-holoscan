@@ -101,7 +101,7 @@ check("stale feedback -> HOLD", f.mode == "HOLD", f.reason)
 
 # 8 temperature / torque / motor fault -> HOLD
 for name, health in [("temperature", {"temp": [30, 30, 65, 30, 30, 30, 30]}),
-                     ("torque", {"torque": [0, 20, 0, 0, 0, 0, 0]}),
+                     ("torque", {"torque": [0, 22, 0, 0, 0, 0, 0]}),
                      ("fault", {"fault": "joint3: over-current"})]:
     f = new()
     run(f, start, 4.0, measured=start)

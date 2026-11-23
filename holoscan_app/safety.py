@@ -43,7 +43,9 @@ class SafetyParams:
     track_err_deg: float = 15.0
     track_err_s: float = 0.20
     temp_max_c: float = 60.0
-    torque_max: list = field(default_factory=lambda: [12.0, 14.0, 12.0, 4.0, 4.0, 3.0, 2.0])  # Nm, j1..j6 + gripper
+    # Nm, j1..j6 + gripper. joint2 (shoulder, 4340P, peak ~27 Nm) carries the whole arm: 9-15 Nm at 0.4 m reach,
+    # so 20 Nm; heat is covered by temp_max_c.
+    torque_max: list = field(default_factory=lambda: [12.0, 20.0, 14.0, 4.0, 4.0, 3.0, 2.0])
     check_tracking: bool = True        # False in shadow mode (motors off, the arm cannot follow)
 
 
