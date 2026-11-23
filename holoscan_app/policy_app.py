@@ -363,7 +363,10 @@ class ViewOp(Operator):
         r = v["reply"] or {}
         pts = []
         for a in r.get("plan", []):
-            q6, g = action_to_command(np.asarray(a, float))
+            a = np.asarray(a, float).reshape(-1)
+            if a.size != 7 or not np.all(np.isfinite(a)):
+                continue                          # never let a malformed plan entry crash the view
+            q6, g = action_to_command(a)
             p = self.k.fk(q6).translation
             pts.append((self._px(p[0], p[1]), g))
         for (p0, _), (p1, g1) in zip(pts, pts[1:]):

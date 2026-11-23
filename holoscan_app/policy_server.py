@@ -67,7 +67,7 @@ def main():
             refill = len(policy._action_queue) == 0
             with torch.inference_mode():
                 action = post(policy.select_action(pre(obs)))
-                plan = [post(q[None]).float().cpu().numpy()[0].tolist() for q in list(policy._action_queue)[::2]]
+                plan = [post(q).float().cpu().numpy().reshape(-1)[:7].tolist() for q in list(policy._action_queue)[::2]]  # queue items are (1, 7)
             torch.cuda.synchronize()
             ms = (time.perf_counter() - t0) * 1000
             sock.send_json({"action": action.float().cpu().numpy()[0].tolist(), "plan": plan,
