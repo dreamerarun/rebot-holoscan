@@ -41,6 +41,8 @@ BOX_CLEAR = 0.12
 REACH = (0.15, 0.34)
 REC_FPS = 15
 GRASP_RANGE = (0.004, 0.025)
+REACH_BIAS = 0.010   # m: aim the grasp this much further out along the reach direction - the real arm (gravity
+                     # sag + calibration) landed ~1 cm short towards the base (user, 2026-11-23, twice)
 
 
 def say(m):
@@ -278,6 +280,9 @@ class CollectorOp(Operator):
                 if self.sim:                     # the twin puts the cube somewhere valid
                     self._sim_reset()
                 return
+            if not self.sim and REACH_BIAS:
+                r = math.hypot(*cxy)
+                cxy = (cxy[0] * (r + REACH_BIAS) / r, cxy[1] * (r + REACH_BIAS) / r)
             try:
                 segs = self.mp.pick_place(meas, cxy, bxy, PHOTO_Q, cube_yaw=yaw)
             except ValueError as exc:
