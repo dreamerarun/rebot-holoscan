@@ -7,7 +7,7 @@
 # (An earlier, less careful placement read joint1 81.4 / joint6 -25.4.) joint2/3 sit on their folded stops;
 # joint4/5 deviations are within hand-placement error and stay 0. Software offsets only: nothing is written to the motors.
 
-port: /dev/ttyACM0
+port: /dev/serial/by-id/usb-HDSC_CDC_Device_00000000050C-if00   # stable name (was /dev/ttyACM0)
 baud: 921600
 read_hz: 30
 

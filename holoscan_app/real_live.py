@@ -53,11 +53,38 @@ class RealArmLive:
             time.sleep(0.001)
 
     def read(self, wait_s=0.010):
-        """Feedback requests (motors reply with their state). {name: MotorState or None}."""
-        for _, m in self.arm + [self.grip]:
-            m.request_feedback()
-        self._poll(wait_s)
-        return {n: m.get_state() for n, m in self.arm + [self.grip]}
+        """Feedback requests (motors reply with their state). {name: MotorState or None}.
+        If the USB-CAN bridge drops (re-plug / USB reset), every motor reads None - the SafetyFilter then HOLDs
+        (the motors themselves keep their last target: CAN timeout is off) - and we try to reopen once a second."""
+        names = [n for n, _ in self.arm + [self.grip]]
+        if self.ctrl is None:
+            self._reopen()
+            return {n: None for n in names}
+        try:
+            for _, m in self.arm + [self.grip]:
+                m.request_feedback()
+            self._poll(wait_s)
+            return {n: m.get_state() for n, m in self.arm + [self.grip]}
+        except Exception as exc:
+            print(f"[live] USB-CAN bridge lost ({exc}) - motors keep holding; reconnecting", flush=True)
+            try:
+                self.ctrl.close()
+            except Exception:
+                pass
+            self.ctrl = None
+            return {n: None for n in names}
+
+    def _reopen(self):
+        now = time.time()
+        if now - getattr(self, "_last_reopen", 0.0) < 1.0:
+            return
+        self._last_reopen = now
+        try:
+            self.arm, self.grip = [], None
+            self.open()
+            print("[live] USB-CAN bridge reconnected (still HOLDING - re-arm with a)", flush=True)
+        except Exception:
+            self.ctrl = None
 
     def check_modes(self):
         """All arm motors must already be in POS_VEL (read-only check; we never change modes)."""
@@ -137,14 +164,23 @@ class RealArmLive:
         """Send a filtered sim-space command to joint1..6 (+ gripper if enabled)."""
         if self.dry or not self.enabled:
             return
+        if self.ctrl is None:
+            return
         tgt = sim_to_motor_rad(self.cfg, q7)
-        for name, m in self.arm:
-            m.send_pos_vel(float(tgt[name]), self.vlim)
+        try:
+            for name, m in self.arm:
+                m.send_pos_vel(float(tgt[name]), self.vlim)
+        except Exception as exc:
+            print(f"[live] send failed ({exc})", flush=True)
+            return
         if self.grip_enabled:
             g = self.cfg["gripper"]
             lo, hi = sorted((math.radians(g["open_deg"]), math.radians(g["closed_deg"])))
-            self.grip[1].send_force_pos(float(np.clip(tgt["gripper"], lo - 0.03, hi + 0.03)),
-                                        self.grip_vlim, self.grip_ratio)
+            try:
+                self.grip[1].send_force_pos(float(np.clip(tgt["gripper"], lo - 0.03, hi + 0.03)),
+                                            self.grip_vlim, self.grip_ratio)
+            except Exception as exc:
+                print(f"[live] gripper send failed ({exc})", flush=True)
 
     def disable_arm(self, log=print):
         if self.dry:
