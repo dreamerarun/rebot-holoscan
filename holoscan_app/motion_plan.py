@@ -24,8 +24,9 @@ DT = 1.0 / RATE
 # heights of the TCP (between the finger pads, 15 mm behind the tips), metres above the base plane
 Z_PRE = 0.10        # above an object before descending
 Z_GRASP = 0.025     # cube (4 cm) centre ~0.02: pads cover 1-5 cm, fingertips ~1 cm above the table
-Z_PLACE = 0.042     # release ~1 cm above the table: at 0.030 the cube (slipped down in the soft grip) was pressed into
-                    # the table, the arm pushed up/out ~1 cm, and every free re-grasp landed short (2026-11-23)
+Z_PLACE = 0.030     # release height: the cube drops ~5 mm
+SETTLE_S = 1.0      # pause at the bottom before releasing/grasping: the arm trails its descent by ~5 mm out / 3 mm up
+                    # and only settles within ~1 s - releasing early put every calibration point 3-5 mm off (2026-11-23)
 Z_RETREAT = 0.12
 Z_HIGH = 0.15       # approach/leave objects from here (fingertips ~13.5 cm): joint swings at 10 cm brushed the cube
 Z_SWING = 0.12      # joint-space swings near objects never take the TCP below this
@@ -244,6 +245,7 @@ class MotionPlanner:
             segs[-1].z_min = Z_SWING
             segs.append(self.vertical(f"point {i}: lower", x, y, Z_HIGH, Z_PLACE, q_pre, GRIP_CLOSE, V_DOWN, Z_MIN_NEAR))
             q = segs[-1].q[-1][:ARM]
+            segs.append(self.hold(f"point {i}: settle before release", q, GRIP_CLOSE, SETTLE_S, Z_MIN_NEAR))
             segs.append(self.gripper(f"point {i}: release", q, GRIP_CLOSE, GRIP_OPEN, 0.8))
             segs.append(self.hold(f"point {i}: settle", q, GRIP_OPEN, 0.4, Z_MIN_NEAR))
             segs.append(self.vertical(f"point {i}: rise", x, y, Z_PLACE, Z_HIGH, q, GRIP_OPEN, V_UP, Z_MIN_NEAR))
@@ -258,6 +260,7 @@ class MotionPlanner:
             segs[-1].z_min = Z_SWING
             segs.append(self.vertical(f"point {i}: descend", x, y, Z_HIGH, Z_GRASP, q_pre, GRIP_OPEN, V_DOWN, Z_MIN_NEAR))
             q = segs[-1].q[-1][:ARM]
+            segs.append(self.hold(f"point {i}: settle at the cube", q, GRIP_OPEN, SETTLE_S, Z_MIN_NEAR))
             segs.append(self.gripper(f"point {i}: grasp", q, GRIP_OPEN, GRIP_CLOSE, 1.2))
             segs.append(self.hold(f"point {i}: check the grasp", q, GRIP_CLOSE, 0.5, Z_MIN_NEAR, event="check_grasp"))
             segs.append(self.vertical(f"point {i}: lift", x, y, Z_GRASP, Z_HIGH, q, GRIP_CLOSE, V_UP, Z_MIN_NEAR))
@@ -268,6 +271,7 @@ class MotionPlanner:
         segs[-1].z_min = Z_SWING
         segs.append(self.vertical("lower", hx, hy, Z_HIGH, Z_PLACE, q_pre_h, GRIP_CLOSE, V_DOWN, Z_MIN_NEAR))
         q = segs[-1].q[-1][:ARM]
+        segs.append(self.hold("settle before release", q, GRIP_CLOSE, SETTLE_S, Z_MIN_NEAR))
         segs.append(self.gripper("release", q, GRIP_CLOSE, GRIP_OPEN, 0.8))
         segs.append(self.vertical("rise", hx, hy, Z_PLACE, Z_RETREAT, q, GRIP_OPEN, V_UP, Z_MIN_NEAR))
         q = segs[-1].q[-1][:ARM]

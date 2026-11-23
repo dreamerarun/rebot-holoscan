@@ -133,7 +133,10 @@ class ScriptOp(Operator):
         if self.state == "ARRIVE":                 # plan step done: has the real/sim arm arrived?
             self._emit(op_output, seg.q[-1])
             err = 999.0 if meas is None else float(np.degrees(np.max(np.abs(np.asarray(meas)[:6] - seg.q[-1][:6]))))
-            if err < 3.0:
+            # at the table the arm must really be there before the gripper acts: 1 deg (3 deg after 3 s)
+            low = any(w in seg.label for w in ("lower", "descend", "settle"))
+            tol = 1.0 if (low and time.perf_counter() - self.t_arrive < 3.0) else 3.0
+            if err < tol:
                 self.state = "RUN"
                 self._event(seg, meas)
             elif time.perf_counter() - self.t_arrive > 4.0:
