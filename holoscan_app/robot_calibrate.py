@@ -151,7 +151,9 @@ class ScriptOp(Operator):
         ev = seg.event
         if ev.startswith("wait_key"):
             self.state, self.t_wait = "WAIT_KEY", time.perf_counter()
-            say("[cal] put the cube on the table UNDER the open gripper, step back, then type g")
+            STATUS["last"] = "slide the cube between the open fingers (centred, not behind), then g"
+            say("[cal] slide the cube on the table BETWEEN the open fingers - centred under them, not in front or "
+                "behind - take your hand away, then type g")
             return
         if ev == "check_grasp":
             g = None if meas is None else float(meas[6])

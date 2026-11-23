@@ -29,6 +29,8 @@ Z_RETREAT = 0.12
 Z_MIN_NEAR = 0.022  # hard floor while near the table
 Z_MIN_TRANSIT = 0.05
 GRIP_OPEN = 0.030   # finger joint (m)
+GRIP_HANDOVER = 0.040   # wider while the user slides the cube in
+Z_HANDOVER = 0.07   # wait here for the cube: fingertips ~5.5 cm up, 1.5 cm above the cube's top
 GRIP_CLOSE = 0.0    # force-limited on the real gripper (FORCE_POS cap), stops on the cube
 
 V_JOINT_DEG = 12.0  # plan speed for joint-space moves (below the 15 deg/s SafetyFilter cap)
@@ -138,12 +140,15 @@ class MotionPlanner:
         segs.append(self.joint_move("to the ready pose", q0, READY_Q, 0.0))
         q_pre_h = self.ik(self.pose(hx, hy, Z_PRE), READY_Q)
         segs.append(self.joint_move("to the handover point", READY_Q, q_pre_h, 0.0))
-        segs.append(self.gripper("open the gripper", q_pre_h, 0.0, GRIP_OPEN, 1.0))
-        segs.append(self.hold("wait: cube under the gripper, then g", q_pre_h, GRIP_OPEN, 0.2, event="wait_key:g"))
-        q = q_pre_h
-        segs.append(self.vertical("descend to the cube", hx, hy, Z_PRE, Z_GRASP, q, GRIP_OPEN, V_DOWN, Z_MIN_NEAR))
+        segs.append(self.gripper("open the gripper", q_pre_h, 0.0, GRIP_HANDOVER, 1.3))
+        segs.append(self.vertical("lower to the handover height", hx, hy, Z_PRE, Z_HANDOVER, q_pre_h, GRIP_HANDOVER,
+                                  V_DOWN, Z_MIN_NEAR))
         q = segs[-1].q[-1][:ARM]
-        segs.append(self.gripper("close on the cube", q, GRIP_OPEN, GRIP_CLOSE, 1.2))
+        segs.append(self.hold("wait: slide the cube between the fingers, then g", q, GRIP_HANDOVER, 0.2,
+                              Z_MIN_NEAR, event="wait_key:g"))
+        segs.append(self.vertical("descend to the cube", hx, hy, Z_HANDOVER, Z_GRASP, q, GRIP_HANDOVER, V_DOWN, Z_MIN_NEAR))
+        q = segs[-1].q[-1][:ARM]
+        segs.append(self.gripper("close on the cube", q, GRIP_HANDOVER, GRIP_CLOSE, 1.4))
         segs.append(self.hold("check the grasp", q, GRIP_CLOSE, 0.5, Z_MIN_NEAR, event="check_grasp"))
         segs.append(self.vertical("lift", hx, hy, Z_GRASP, Z_PRE, q, GRIP_CLOSE, V_UP, Z_MIN_NEAR))
         q = segs[-1].q[-1][:ARM]
