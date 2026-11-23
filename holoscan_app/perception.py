@@ -55,11 +55,29 @@ CUBE_MIN_Y_FRAC = 0.30       # cubes lie on the table: ignore yellow above 30 % 
                              # (the arm's own yellow Seeed sticker shows up there in the folded pose)
 
 
+CUBE_GLARE_HSV = ((23, 60, 245), (32, 255, 255))   # washed-out cube in the bright near-camera corner
+                                                    # (2026-11-23: S 44-119 at V 255 at (0.28..0.33, +0.10))
+
+
 def detect_cube(bgr, roi=None) -> Blob:
     """roi: optional uint8 mask (255 = look here). The collector passes the cube zone + the box area, so other
-    yellow things (the arm's sticker, the power supply label) can never be taken for the cube."""
+    yellow things (the arm's sticker, the power supply label) can never be taken for the cube.
+    If the strict colour finds no cube at all, one retry also accepts near-white glare yellow (same checks)."""
     hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
-    mask = _mask(hsv, CUBE_HSV)
+    b = _detect_cube(hsv, _mask(hsv, CUBE_HSV), roi)
+    # glare retry only inside a search area (collector zone / calibration circle): on whole frames it can pick up
+    # bright spots on the gripper
+    if roi is None or b.ok or b.reason != "no yellow cube" and not b.reason.startswith("cube area"):
+        return b
+    mask = cv2.bitwise_or(_mask(hsv, CUBE_HSV), _mask(hsv, CUBE_GLARE_HSV))
+    g = _detect_cube(hsv, mask, roi)
+    if g.ok:
+        g.reason = "glare"
+        return g
+    return b
+
+
+def _detect_cube(hsv, mask, roi) -> Blob:
     mask[: int(CUBE_MIN_Y_FRAC * mask.shape[0])] = 0
     if roi is not None:
         mask = cv2.bitwise_and(mask, roi)

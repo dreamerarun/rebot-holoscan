@@ -171,7 +171,15 @@ class RealArmLive:
             for name, m in self.arm:
                 m.send_pos_vel(float(tgt[name]), self.vlim)
         except Exception as exc:
-            print(f"[live] send failed ({exc})", flush=True)
+            # commands are not reaching the motors (2026-11-23: dm-serial write timed out after a USB knock while reads
+            # still worked; the arm stood still and the park looked like a collision). Treat it as a lost bridge:
+            # the next read reports no feedback (SafetyFilter HOLDs, motors keep their last target) and we reopen.
+            print(f"[live] send failed ({exc}) - commands are NOT reaching the motors: HOLD and reconnecting", flush=True)
+            try:
+                self.ctrl.close()
+            except Exception:
+                pass
+            self.ctrl = None
             return
         if self.grip_enabled:
             g = self.cfg["gripper"]
