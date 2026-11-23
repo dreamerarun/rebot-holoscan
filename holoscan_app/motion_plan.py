@@ -23,14 +23,15 @@ DT = 1.0 / RATE
 
 # heights of the TCP (between the finger pads, 15 mm behind the tips), metres above the base plane
 Z_PRE = 0.10        # above an object before descending
-Z_GRASP = 0.025     # cube (4 cm) centre ~0.02: pads cover 1-5 cm, fingertips ~1 cm above the table
-Z_PLACE = 0.030     # release height: the cube drops ~5 mm
+Z_GRASP = 0.035     # +1 cm (2026-11-23): at 0.025 the real fingertips touched the table at every grasp (the
+                    # model puts them 1.5 cm below the TCP; they reach ~1 cm lower) and nudged the cube/arm
+Z_PLACE = 0.040     # release height: the cube drops ~5 mm (+1 cm with Z_GRASP)
 SETTLE_S = 1.0      # pause at the bottom before releasing/grasping: the arm trails its descent by ~5 mm out / 3 mm up
                     # and only settles within ~1 s - releasing early put every calibration point 3-5 mm off (2026-11-23)
 Z_RETREAT = 0.12
 Z_HIGH = 0.15       # approach/leave objects from here (fingertips ~13.5 cm): joint swings at 10 cm brushed the cube
 Z_SWING = 0.12      # joint-space swings near objects never take the TCP below this
-Z_MIN_NEAR = 0.022  # hard floor while near the table
+Z_MIN_NEAR = 0.032  # hard floor while near the table (+1 cm with Z_GRASP)
 Z_MIN_TRANSIT = 0.05
 GRIP_OPEN = 0.030   # finger joint (m)
 GRIP_HANDOVER = 0.040   # wider while the user slides the cube in
