@@ -23,6 +23,13 @@ gripper:
   motor_id: 0x07
   feedback_id: 0x17
   model: "4310"
-  closed_deg: 0.0      # closed reads about -6..+4 (measured by hand, motors off)
-  open_deg: -248.0     # fully open by hand read -248.5 (Seeed config range: -270..0)
+  # Live control HOMES the gripper on every enable (gentle push to closed) and sets closed/open from that,
+  # because the motor reading shifts by a full turn across power cycles (2026-11-23: closed read +352.7,
+  # yesterday ~0). Stroke ~355 deg, opening = reading going DOWN. The values below are only used by the
+  # read-only tools (mirror/shadow) and may be off by 360 deg after a power cycle.
+  closed_deg: 352.7
+  open_deg: 2.7
+  closing_sign: 1          # closing = reading going up
+  stroke_deg: 350.0        # a little short of the measured 355 so "open" never pushes the end stop
+  homing_ratio: 0.03       # FORCE_POS current fraction while homing (Seeed uses 0.012)
   sim_open_m: 0.05

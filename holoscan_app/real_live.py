@@ -106,15 +106,32 @@ class RealArmLive:
             return False, "gripper did not answer"
         m.ensure_mode(MODE_FORCE_POS, 1000)          # RAM only (not stored): power cycle restores POS_VEL
         m.enable()
-        m.send_force_pos(float(before.pos), self.grip_vlim, self.grip_ratio)
-        time.sleep(0.15)
-        after = self.read()[name]
-        moved = 999.0 if after is None else abs(math.degrees(after.pos - before.pos))
         self.grip_enabled = True
-        log(f"[live] gripper enabled (FORCE_POS, current cap {self.grip_ratio:.2f}), holding (moved {moved:.2f} deg)")
-        if moved > 5.0:
-            return False, f"gripper moved {moved:.1f} deg on enable"
-        return True, "gripper enabled"
+        # HOMING (like Seeed's detect_gripper_zero): the gripper's motor reading can shift by a full turn over a
+        # power cycle (stroke ~355 deg), so find "closed" every time: push gently toward closed (+) until it stops.
+        g = self.cfg["gripper"]
+        sign = 1.0 if g.get("closing_sign", 1) > 0 else -1.0
+        prev, stable, t_end, cur = None, 0, time.time() + 12.0, before.pos
+        while time.time() < t_end:
+            m.send_force_pos(float(cur + sign * math.radians(25.0)), math.radians(90.0), float(g.get("homing_ratio", 0.03)))
+            time.sleep(0.04)
+            st = self.read()[name]
+            if st is None:
+                continue
+            cur = st.pos
+            stable = stable + 1 if prev is not None and abs(math.degrees(cur - prev)) < 0.15 else 0
+            prev = cur
+            if stable >= 8:
+                break
+        m.send_force_pos(float(cur), self.grip_vlim, self.grip_ratio)       # hold closed
+        if stable < 8:
+            return False, "gripper homing did not settle within 12 s"
+        closed = math.degrees(cur)
+        g["closed_deg"] = closed
+        g["open_deg"] = closed - sign * float(g.get("stroke_deg", 350.0))
+        log(f"[live] gripper homed: closed at {closed:.1f} deg (open = {g['open_deg']:.1f} deg); "
+            f"FORCE_POS current cap {self.grip_ratio:.2f}")
+        return True, "gripper enabled and homed (closed)"
 
     def send(self, q7):
         """Send a filtered sim-space command to joint1..6 (+ gripper if enabled)."""
