@@ -183,11 +183,14 @@ class MotionPlanner:
         bx, by = place
         a = self.finger_angle(cx, cy, cube_yaw)
         b = self.finger_angle(bx, by)
-        q_pre = self.k.ik_multi(self.pose_a(cx, cy, Z_PRE, a), q0)
+        # arrive HIGH above the cube (15 cm, fingertips ~13 cm), the swing never below 12 cm, then straight down:
+        # a joint-space swing that only had to stay above 5 cm brushed the cube with the fingertips (2026-11-23)
+        q_pre = self.k.ik_multi(self.pose_a(cx, cy, z_carry, a), q0)
         if q_pre is None:
             raise ValueError(f"cube at ({cx:.2f}, {cy:+.2f}) cannot be reached top-down")
-        segs.append(self.joint_move("move above the cube", q0, q_pre, GRIP_OPEN))
-        segs.append(self.vertical_a("descend to the cube", cx, cy, a, Z_PRE, Z_GRASP, q_pre, GRIP_OPEN, V_DOWN, Z_MIN_NEAR))
+        segs.append(self.joint_move("move high above the cube", q0, q_pre, GRIP_OPEN))
+        segs[-1].z_min = 0.12
+        segs.append(self.vertical_a("descend to the cube", cx, cy, a, z_carry, Z_GRASP, q_pre, GRIP_OPEN, V_DOWN, Z_MIN_NEAR))
         q = segs[-1].q[-1][:ARM]
         segs.append(self.gripper("grasp", q, GRIP_OPEN, GRIP_CLOSE, 1.2))
         segs.append(self.hold("check the grasp", q, GRIP_CLOSE, 0.5, Z_MIN_NEAR, event="check_grasp"))
@@ -205,6 +208,7 @@ class MotionPlanner:
         segs.append(self.vertical_a("rise", bx, by, b, z_release, z_carry, q, GRIP_OPEN, V_UP, 0.08))
         q = segs[-1].q[-1][:ARM]
         segs.append(self.joint_move("back to the observe pose", q, observe_q, GRIP_OPEN))
+        segs[-1].z_min = 0.12
         segs.append(self.hold("episode done", observe_q, GRIP_OPEN, 0.5, event="done"))
         return segs
 
