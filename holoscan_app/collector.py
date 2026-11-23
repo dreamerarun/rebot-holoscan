@@ -41,7 +41,7 @@ BOX_CLEAR = 0.12
 REACH = (0.15, 0.34)
 REC_FPS = 15
 GRASP_RANGE = (0.004, 0.025)
-REACH_BIAS = 0.020   # m (1 cm still landed ~1 cm short): aim the grasp this much further out along the reach direction - the real arm (gravity
+REACH_BIAS = 0.015   # m (0/1 cm landed short, 2 cm overshot): aim the grasp this much further out along the reach direction - the real arm (gravity
                      # sag + calibration) landed ~1 cm short towards the base (user, 2026-11-23, twice)
 
 
@@ -323,6 +323,14 @@ class CollectorOp(Operator):
         self._emit(op_output, q7)
         if self.recording:
             self._record_frame(last)
+        # film the grasp (camera frames every 0.25 s) so every landing can be checked afterwards
+        if not self.sim and seg.label in ("descend to the cube", "settle at the cube", "grasp") and \
+                rc.CAM["frame"] is not None and time.time() - getattr(self, "t_film", 0.0) > 0.25:
+            self.t_film = time.time()
+            d = ROOT / "logs" / "cam" / "grasps" / f"ep{self.saved + 1:03d}_{self.ep:02d}"
+            d.mkdir(parents=True, exist_ok=True)
+            self.film_n = getattr(self, "film_n", 0) + 1
+            cv2.imwrite(str(d / f"f{self.film_n:05d}.jpg"), rc.CAM["frame"])
         self.i += 1
         if self.i >= len(seg.q):
             self.state, self.t_arrive = "ARRIVE", time.perf_counter()
