@@ -8,3 +8,4 @@ train/
 videos/
 *.mp4
 keys
+!docs/media/*.mp4
