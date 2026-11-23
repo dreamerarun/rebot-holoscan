@@ -445,7 +445,7 @@ class ViewOp(Operator):
         arm = v["arm"] or {}
         lines = [f"HOLOSCAN  {'replay (sim twin executes)' if v['replay'] else 'LIVE real arm'}   "
                  f"policy {v['state']}" + (f": {v['why']}" if v["state"] == "STOPPED" and v["why"] else ""),
-                 f"ACT steps {v['steps']}   GPU inference {r.get('infer_ms', 0):5.1f} ms   round trip {v['rt_ms']:5.1f} ms"
+                 f"policy steps {v['steps']}   GPU inference {r.get('infer_ms', 0):5.1f} ms   round trip {v['rt_ms']:5.1f} ms"
                  + ("   NEW CHUNK" if r.get("refill") else ""),
                  "operator time ms: " + "  ".join(f"{k} {STATS[k]:.1f}" for k in ("camera", "replay", "policy",
                                                                                      "view") if k in STATS),
