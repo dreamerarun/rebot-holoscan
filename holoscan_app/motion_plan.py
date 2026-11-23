@@ -24,7 +24,8 @@ DT = 1.0 / RATE
 # heights of the TCP (between the finger pads, 15 mm behind the tips), metres above the base plane
 Z_PRE = 0.10        # above an object before descending
 Z_GRASP = 0.025     # cube (4 cm) centre ~0.02: pads cover 1-5 cm, fingertips ~1 cm above the table
-Z_PLACE = 0.030     # release height: the cube drops ~5 mm
+Z_PLACE = 0.042     # release ~1 cm above the table: at 0.030 the cube (slipped down in the soft grip) was pressed into
+                    # the table, the arm pushed up/out ~1 cm, and every free re-grasp landed short (2026-11-23)
 Z_RETREAT = 0.12
 Z_HIGH = 0.15       # approach/leave objects from here (fingertips ~13.5 cm): joint swings at 10 cm brushed the cube
 Z_SWING = 0.12      # joint-space swings near objects never take the TCP below this
