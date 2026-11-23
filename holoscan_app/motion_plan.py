@@ -151,6 +151,63 @@ class MotionPlanner:
         segs.append(self.joint_move("fold to the rest pose", q0, READY_Q, grip))
         return segs
 
+    # ------------------------------------------------------------ one pick-and-place episode
+    def finger_angle(self, x, y, cube_yaw=None):
+        """Fingers across the reach direction, snapped to the nearest cube face if the cube yaw is known."""
+        radial = math.atan2(y, x) + math.pi / 2
+        if cube_yaw is None:
+            return radial
+        a = min((cube_yaw + k * math.pi / 2 for k in range(4)), key=lambda c: abs(math.remainder(c - radial, 2 * math.pi)))
+        return radial + math.remainder(a - radial, 2 * math.pi)
+
+    def pose_a(self, x, y, z, a):
+        return top_down((x, y, z), a)
+
+    def vertical_a(self, label, x, y, a, z_a, z_b, q_seed, g, speed, z_min):
+        T_a, T_b = self.pose_a(x, y, z_a, a), self.pose_a(x, y, z_b, a)
+        n = max(int(abs(z_b - z_a) / speed * RATE), 2)
+        d = pin.log6(T_a.actInv(T_b))
+        out, q = [], np.asarray(q_seed)[:ARM]
+        for i in range(1, n + 1):
+            q, pe, re = self.k.ik(T_a * pin.exp6(d * smooth(i / n)), q, iters=80)
+            if pe > 2e-3 or re > 2e-2:
+                raise ValueError(f"{label}: IK error {pe * 1000:.1f} mm at sample {i}")
+            out.append(np.r_[q, g])
+        return Segment(label, out, z_min)
+
+    def pick_place(self, q_start, pick, place, observe_q, cube_yaw=None, z_carry=0.15, z_release=0.10):
+        """observe -> above cube -> descend -> grasp (checked) -> lift -> over the box -> lower -> release -> rise -> observe"""
+        segs = []
+        q0 = np.asarray(q_start)[:ARM]
+        cx, cy = pick
+        bx, by = place
+        a = self.finger_angle(cx, cy, cube_yaw)
+        b = self.finger_angle(bx, by)
+        q_pre = self.k.ik_multi(self.pose_a(cx, cy, Z_PRE, a), q0)
+        if q_pre is None:
+            raise ValueError(f"cube at ({cx:.2f}, {cy:+.2f}) cannot be reached top-down")
+        segs.append(self.joint_move("move above the cube", q0, q_pre, GRIP_OPEN))
+        segs.append(self.vertical_a("descend to the cube", cx, cy, a, Z_PRE, Z_GRASP, q_pre, GRIP_OPEN, V_DOWN, Z_MIN_NEAR))
+        q = segs[-1].q[-1][:ARM]
+        segs.append(self.gripper("grasp", q, GRIP_OPEN, GRIP_CLOSE, 1.2))
+        segs.append(self.hold("check the grasp", q, GRIP_CLOSE, 0.5, Z_MIN_NEAR, event="check_grasp"))
+        segs.append(self.vertical_a("lift", cx, cy, a, Z_GRASP, z_carry, q, GRIP_CLOSE, V_UP, Z_MIN_NEAR))
+        q = segs[-1].q[-1][:ARM]
+        q_box = self.k.ik_multi(self.pose_a(bx, by, z_carry, b), q)
+        if q_box is None:
+            raise ValueError(f"box at ({bx:.2f}, {by:+.2f}) cannot be reached top-down")
+        segs.append(self.joint_move("carry over the box", q, q_box, GRIP_CLOSE))
+        segs[-1].z_min = 0.11                     # never sweep low while carrying (box walls)
+        segs.append(self.vertical_a("lower into the box", bx, by, b, z_carry, z_release, q_box, GRIP_CLOSE, V_DOWN, 0.08))
+        q = segs[-1].q[-1][:ARM]
+        segs.append(self.gripper("release", q, GRIP_CLOSE, GRIP_OPEN, 0.8))
+        segs.append(self.hold("settle", q, GRIP_OPEN, 0.4, 0.08))
+        segs.append(self.vertical_a("rise", bx, by, b, z_release, z_carry, q, GRIP_OPEN, V_UP, 0.08))
+        q = segs[-1].q[-1][:ARM]
+        segs.append(self.joint_move("back to the observe pose", q, observe_q, GRIP_OPEN))
+        segs.append(self.hold("episode done", observe_q, GRIP_OPEN, 0.5, event="done"))
+        return segs
+
     # ------------------------------------------------------------ the calibration plan
     def calibration(self, q_start, grid, handover, photo_q):  # noqa: C901
         segs = []

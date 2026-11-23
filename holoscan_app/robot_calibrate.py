@@ -276,8 +276,12 @@ class CamViewOp(Operator):
         if now - self.t0 > 2.0:
             CAM["fps"], self.n, self.t0 = self.n / (now - self.t0), 0, now
         view = draw(bgr, detect_cube(bgr), detect_box(bgr))
+        if CAM.get("zone_px") is not None:      # collector: where the cube may be placed
+            cv2.polylines(view, [CAM["zone_px"]], True, (0, 255, 0), 2)
         rgb = cv2.cvtColor(view, cv2.COLOR_BGR2RGB)
-        lines = [f"step: {STATUS['step']}", f"calibration points: {STATUS['points']} / 9   camera {CAM['fps']:4.1f} fps"]
+        pts = STATUS["points"]
+        lines = [f"step: {STATUS['step']}",
+                 (pts if isinstance(pts, str) else f"calibration points: {pts} / 9") + f"   camera {CAM['fps']:4.1f} fps"]
         if STATUS["last"]:
             lines.append(STATUS["last"])
         lines.append("keys in the terminal:  g go   x abort   s hold   p park   q quit")
