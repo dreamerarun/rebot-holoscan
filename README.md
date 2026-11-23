@@ -159,3 +159,7 @@ Keys in the arm terminals: `e` enable · `g` go · `x` stop · `s` hold · `r` b
 ## Acknowledgements
 
 NVIDIA Holoscan and Isaac Sim · Hugging Face LeRobot, ACT and SmolVLA · Seeed Studio reBot.
+
+## License
+
+MIT - see [LICENSE](LICENSE). The reBot arm description in `assets/` comes from Seeed Studio and keeps its original terms.
