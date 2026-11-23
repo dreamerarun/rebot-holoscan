@@ -44,6 +44,7 @@ POLICY_HZ = 15                    # the dataset's rate: one policy step per 4 ti
 STEP = int(round(RATE / POLICY_HZ))
 REACH_BOX = {"x": (0.08, 0.40), "y": (-0.32, 0.20), "z": (0.0, 0.40)}   # gripper must stay in here (cube zone + box)
 MAX_JUMP_DEG = 20.0               # one policy step may not move any joint more than this
+LIMIT_STOP = math.radians(10.0)   # an action more than this beyond a joint limit stops the policy
 MAX_RUN_S = 120.0
 SERVER_TIMEOUT_MS = 500
 STATS = {}                        # per-operator compute times for the overlay
@@ -205,8 +206,11 @@ class PolicyOp(Operator):
         if not np.all(np.isfinite(q7)):
             return "action is not finite"
         for j, (lo, hi) in enumerate(self.limits):
-            if not lo - 0.02 <= q7[j] <= hi + 0.02:
-                return f"joint{j + 1} {math.degrees(q7[j]):.0f} deg outside its limits"
+            # small overshoots happen at the observe pose (joint2/3 sit 3 deg from their 0 limit): clip them (the
+            # SafetyFilter clamps too); far outside means a broken output -> stop
+            if not lo - LIMIT_STOP <= q7[j] <= hi + LIMIT_STOP:
+                return f"joint{j + 1} {math.degrees(q7[j]):.0f} deg far outside its limits"
+            q7[j] = min(max(q7[j], lo), hi)
         p = self.k.fk(q7[:6]).translation
         for ax, v in zip("xyz", p):
             lo, hi = REACH_BOX[ax]
