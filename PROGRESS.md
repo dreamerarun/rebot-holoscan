@@ -179,3 +179,11 @@ TODO next session (before any live run):
 - Map scatter about +-1 cm (cube lands a few mm differently each release) - for more accuracy: repeat each calibration point 2-3x and average.
 - Joint-2 power cable re-fixed after its 3rd drop (always in the reaching pose) - watch it.
 - Arm parked + OFF. Next: convert to LeRobot (convert_real_dataset.sh), then train a policy (ACT/SmolVLA) on the GB10.
+
+## 2026-11-23 22:35 - ACT policy trained + Holoscan policy app
+- Dataset: data/lerobot/rebot_real_cube_to_box_scripted (15 ep, 12628 frames, 15 fps) via convert_real_dataset.sh cube_to_box_scripted.
+- ACT: train/act_real_v1 (chunk 50, 25k steps, batch 8, 1h14m; 7.6 step/s with the twin closed, 4.6 with it). Final l1 0.035.
+- Holoscan app: holoscan_app/policy_app.py (--replay N sim twin | --live real arm), server holoscan_app/policy_server.py (LeRobot venv, pyzmq added).
+  Launch: ./run_policy_server.sh <ckpt>/pretrained_model ; ./open_policy_terminal.sh --replay 13 ; keys g run, x stop, r back to observe.
+- Replay ep13 (training data, open loop): final ckpt gripper vs expert mean 1.3 cm, 90% 2.3, max 3.0 (ckpt 5000: 2.3/4.0/5.3).
+- NOT yet run on the real arm (needs the user go-ahead + joint-2 cable check). No held-out episodes yet.
