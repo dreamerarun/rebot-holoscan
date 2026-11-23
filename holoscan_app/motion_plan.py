@@ -224,13 +224,13 @@ class MotionPlanner:
         q_pre_h = self.ik(self.pose(hx, hy, Z_PRE), READY_Q)
         segs.append(self.joint_move("to the handover point", READY_Q, q_pre_h, 0.0))
         segs.append(self.gripper("open the gripper", q_pre_h, 0.0, GRIP_HANDOVER, 1.3))
-        segs.append(self.vertical("lower to the handover height", hx, hy, Z_PRE, Z_HANDOVER, q_pre_h, GRIP_HANDOVER,
+        # wait AT the grasp height: the user slides the cube between the open fingers and the gripper closes without
+        # moving down (descending after g drifted ~1 cm on the real arm and missed the cube, 2026-11-23)
+        segs.append(self.vertical("lower to the grasp height", hx, hy, Z_PRE, Z_GRASP, q_pre_h, GRIP_HANDOVER,
                                   V_DOWN, Z_MIN_NEAR))
         q = segs[-1].q[-1][:ARM]
         segs.append(self.hold("wait: slide the cube between the fingers, then g", q, GRIP_HANDOVER, 0.2,
                               Z_MIN_NEAR, event="wait_key:g"))
-        segs.append(self.vertical("descend to the cube", hx, hy, Z_HANDOVER, Z_GRASP, q, GRIP_HANDOVER, V_DOWN, Z_MIN_NEAR))
-        q = segs[-1].q[-1][:ARM]
         segs.append(self.gripper("close on the cube", q, GRIP_HANDOVER, GRIP_CLOSE, 1.4))
         segs.append(self.hold("check the grasp", q, GRIP_CLOSE, 0.5, Z_MIN_NEAR, event="check_grasp"))
         segs.append(self.vertical("lift", hx, hy, Z_GRASP, Z_PRE, q, GRIP_CLOSE, V_UP, Z_MIN_NEAR))
