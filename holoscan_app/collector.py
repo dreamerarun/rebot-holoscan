@@ -41,7 +41,7 @@ BOX_CLEAR = 0.12
 REACH = (0.15, 0.34)
 REC_FPS = 15
 GRASP_RANGE = (0.004, 0.025)
-REACH_BIAS = 0.0     # m (0.015 with the 7-point calibration; re-tune after the 12-point one): aim the grasp this much further out along the reach direction - the real arm (gravity
+REACH_BIAS = 0.005   # m: 12-point map misses landed ~1 cm short (2 of 10, 2026-11-23); half of it (0.015 was for the old 7-point map): aim the grasp this much further out along the reach direction - the real arm (gravity
                      # sag + calibration) landed ~1 cm short towards the base (user, 2026-11-23, twice)
 
 
