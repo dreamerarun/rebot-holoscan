@@ -360,6 +360,9 @@ class SimArmOp(Operator):
         cmd = self.filter.step(now, 1 / RATE, self.target, 0.0 if self.target is not None else 1e9, meas, 0.0, None)
         if cmd is not None:
             self.link.send(list(cmd[:6]) + [float(cmd[6]), -float(cmd[6])])
+        if self.filter.mode == "HOLD" and not getattr(self, "hold_said", False):
+            self.hold_said = True
+            say(f"[sim] SafetyFilter HOLD: {self.filter.reason}")
         self.last = {"t": now, "state": "ON", "mode": self.filter.mode, "cmd": cmd, "measured": meas}
 
     @property

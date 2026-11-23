@@ -210,6 +210,8 @@ class PolicyOp(Operator):
                 d = np.array(self.dists)
                 say(f"[pol]   replay summary: gripper vs expert mean {d.mean():.1f} cm, 90% {np.percentile(d, 90):.1f} cm, "
                     f"max {d.max():.1f} cm over {len(d)} steps")
+            say(f"[pol]   60 Hz arm loop: largest gap {getattr(self, 'gap_max', 0.0):.0f} ms, "
+                f"{getattr(self, 'stalls', 0)} gaps over 50 ms")
         elif self.state != "STOPPED":
             say(f"[pol] STOPPED: {why}")
         self.state, self.why = "STOPPED", why
@@ -240,6 +242,13 @@ class PolicyOp(Operator):
         f = op_input.receive("frame")
         if f is not None:
             self.frame = f
+        now_t = time.perf_counter()
+        if getattr(self, "t_last_tick", None) is not None and self.state == "RUN":
+            gap = (now_t - self.t_last_tick) * 1000
+            self.gap_max = max(getattr(self, "gap_max", 0.0), gap)
+            if gap > 50:
+                self.stalls = getattr(self, "stalls", 0) + 1
+        self.t_last_tick = now_t
         last = getattr(self.arm_op, "last", None)
         meas = None if last is None else last.get("measured")
         self.tick += 1
@@ -258,6 +267,7 @@ class PolicyOp(Operator):
                     self.state, self.steps, self.t_run = "RUN", 0, time.perf_counter()
                     self.next_due = self.t_run
                     self.errs, self.dists = [], []
+                    self.gap_max, self.stalls = 0.0, 0
                     self.prev_t = self.next_t = np.asarray(self.hold_q, float)
                     self.interp = 0
                     ReplaySourceOp.RUNNING.update(on=True, done=False)
@@ -276,7 +286,8 @@ class PolicyOp(Operator):
                 self.t_viz = time.perf_counter()
                 op_output.emit({"frame": self.frame, "state": self.state, "why": self.why, "steps": self.steps,
                                 "reply": self.last_reply, "rt_ms": self.rt_ms, "gt_err": self.gt_err,
-                                "arm": last, "target": self.hold_q, "replay": self.replay}, "viz")
+                                "arm": last, "target": self.hold_q, "replay": self.replay,
+                                "gap_max": getattr(self, "gap_max", 0.0), "stalls": getattr(self, "stalls", 0)}, "viz")
 
     def _tick(self, op_output, last, meas):
         if self.state == "WAIT_ARM":
@@ -386,6 +397,14 @@ class PolicyOp(Operator):
 class ViewOp(Operator):
     """Camera frame + the policy's planned gripper path (projected onto the table) + status and timings."""
 
+    def __init__(self, fragment, *args, record=None, **kw):
+        self.record, self.writer = record, None
+        super().__init__(fragment, *args, **kw)
+
+    def stop(self):
+        if self.writer is not None:
+            self.writer.close()
+
     def setup(self, spec: OperatorSpec):
         spec.input("viz", policy=IOSpec.QueuePolicy.POP)
         spec.output("tensors")
@@ -430,7 +449,8 @@ class ViewOp(Operator):
                  + ("   NEW CHUNK" if r.get("refill") else ""),
                  "operator time ms: " + "  ".join(f"{k} {STATS[k]:.1f}" for k in ("camera", "replay", "policy",
                                                                                      "view") if k in STATS),
-                 f"safety filter: {arm.get('mode', '-')}"]
+                 f"safety filter: {arm.get('mode', '-')}   60 Hz arm loop: largest gap {v['gap_max']:.0f} ms, "
+                 f"{v['stalls']} gaps > 50 ms"]
         if v["replay"]:
             f = v["frame"]
             lines.append(f"recording frame {f['i']}/{f['n']}")
@@ -439,6 +459,14 @@ class ViewOp(Operator):
                 lines.append(f"policy vs expert: joints max {e[:6].max():4.1f} deg   gripper {e[6]:4.1f} (of 45)")
         lines.append("path: green = gripper open, red = closing   magenta = current target")
         lines.append("keys: g run   x stop   r back to observe" + ("" if v["replay"] else "   s hold   p park   q quit"))
+        if self.record:                           # same picture as the window, text burnt in
+            from videorec import put_lines
+            rec = img.copy()
+            put_lines(rec, lines)
+            if self.writer is None:
+                from videorec import VideoRec
+                self.writer = VideoRec(self.record)
+            self.writer.write(rec)
         spec = HolovizOp.InputSpec("txt", "text")
         spec.text, spec.color, spec.priority = lines, [1.0, 1.0, 0.3, 1.0], 10
         op_output.emit({"video": cp.asarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB)),
@@ -472,7 +500,7 @@ class PolicyApp(Application):
         pol = PolicyOp(self, PeriodicCondition(self, recess_period=timedelta(seconds=1 / RATE)), arm_op=arm,
                        limits=limits, replay=self.a.replay is not None, server_timeout_ms=self.a.server_timeout_ms,
                        name="policy")
-        view = ViewOp(self, name="view")
+        view = ViewOp(self, record=self.a.record, name="view")
         viz = HolovizOp(self, name="holoviz", width=960, height=720, window_title=title,
                         tensors=[dict(name="video", type="color")])
         self.add_flow(src, pol, {("frame", "frame")})
@@ -488,6 +516,7 @@ def main():
     m.add_argument("--replay", type=int, help="staged episode number (1 = oldest) to replay into the sim twin")
     ap.add_argument("--task", default="cube_to_box_scripted")
     ap.add_argument("--keys-file", default=str(ROOT / "keys"))
+    ap.add_argument("--record", default=None, help="write the overlay view to this .mp4")
     ap.add_argument("--server-timeout-ms", type=int, default=SERVER_TIMEOUT_MS,
                     help="max wait for one policy reply (ACT ~100 ms per chunk; SmolVLA more - use 2000)")
     a = ap.parse_args()
