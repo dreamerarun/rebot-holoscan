@@ -197,3 +197,11 @@ TODO next session (before any live run):
   60 Hz arm loop largest gap: ACT 19 ms vs 83 ms; SmolVLA 18 ms vs 586 ms (17 freezes per episode).
 - record_all_videos.sh re-records both. train/ + videos/ now git-ignored (old commits still hold ACT checkpoints, .git 3.8 GB).
 - Not run live yet: SmolVLA on the real arm (needs the user + joint-2 cable check).
+
+## 2026-11-24 ~02:15 - SmolVLA LIVE on the real arm (through the Holoscan pipeline)
+- 5 attempts. User observation: only attempt 1 picked properly (cube at the usual spot ~(0.28,+0.01)); the rest failed.
+  Motor log: attempts 2 and 5 reported ~8.7 mm finger gap (something caught, likely an edge - not a proper carry),
+  3 and 4 closed on nothing; the policy tends to go to the familiar spot first (15 episodes, positions clustered).
+- Holoscan: 60 Hz arm loop largest gap 26-31 ms in every run despite ~580 ms SmolVLA chunk inference; no faults.
+- Next: collect ~50+ scripted episodes spread over the whole green zone (edges included), retrain SmolVLA on zeux (~1 h).
+- Display: after the 23:12 power-off dexstro came up at 1024x768 (monitor EDID not read); fixed with xrandr --output HDMI-0 --mode 1920x1080.
