@@ -198,6 +198,10 @@ class PolicyOp(Operator):
     def _stop(self, why):
         if self.state == "RUN":
             say(f"[pol] policy STOPPED after {self.steps} steps: {why}. Holding - r returns to the observe pose")
+            if self.replay and self.dists:
+                d = np.array(self.dists)
+                say(f"[pol]   replay summary: gripper vs expert mean {d.mean():.1f} cm, 90% {np.percentile(d, 90):.1f} cm, "
+                    f"max {d.max():.1f} cm over {len(d)} steps")
         elif self.state != "STOPPED":
             say(f"[pol] STOPPED: {why}")
         self.state, self.why = "STOPPED", why
@@ -241,6 +245,7 @@ class PolicyOp(Operator):
                     self._stop(r["error"])
                 else:
                     self.state, self.steps, self.t_run = "RUN", 0, time.perf_counter()
+                    self.errs, self.dists = [], []
                     self.prev_t = self.next_t = np.asarray(self.hold_q, float)
                     self.interp = 0
                     ReplaySourceOp.RUNNING.update(on=True, done=False)
@@ -329,6 +334,14 @@ class PolicyOp(Operator):
         self.last_reply = r
         if self.replay:
             self.gt_err = np.abs(np.asarray(r["action"]) - np.asarray(f["gt"]))
+            self.errs.append(self.gt_err)
+            p_pol = self.k.fk(q6).translation
+            q6e, _ = action_to_command(np.asarray(f["gt"], float))
+            d_cm = float(np.linalg.norm(p_pol - self.k.fk(q6e).translation)) * 100
+            self.dists.append(d_cm)
+            if self.steps % 45 == 0:
+                say(f"[pol]   frame {f['i']:4d}: gripper {d_cm:4.1f} cm from the expert's, joints max "
+                    f"{self.gt_err[:6].max():4.1f} deg, gripper cmd {self.gt_err[6]:4.1f}/45")
         self.prev_t, self.next_t, self.interp = np.asarray(self.hold_q, float), q7, 0
         self.steps += 1
 
