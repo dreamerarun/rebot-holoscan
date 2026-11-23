@@ -173,3 +173,9 @@ TODO next session (before any live run):
 2. DONE: tests/test_live_imports.py passes
 3. Joint-2 power connector came loose twice (arm dropped once): keep it tied down; check before enabling.
 4. Then: collector with the new map, watch where the fingers land, 10 episodes.
+
+## 2026-11-23 21:05 - 15 real scripted episodes collected (data/staging/cube_to_box_scripted, 675 MB)
+- 12-point map + REACH_BIAS 5 mm: last runs 11 grasps of 13 attempts; the 2 misses were both ~1 cm short toward the base.
+- Map scatter about +-1 cm (cube lands a few mm differently each release) - for more accuracy: repeat each calibration point 2-3x and average.
+- Joint-2 power cable re-fixed after its 3rd drop (always in the reaching pose) - watch it.
+- Arm parked + OFF. Next: convert to LeRobot (convert_real_dataset.sh), then train a policy (ACT/SmolVLA) on the GB10.
