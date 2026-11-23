@@ -154,3 +154,22 @@ Fixed tonight (all committed):
 - joints 2/3 fell > 15 deg behind on big lifts / park -> motor-side vlim now 2x the software cap.
 - start-up with motors ON while the arm rests folded -> switches them off cleanly; `o` key does the same.
 - C270 delivered ~20 fps -> recorder samples on a fixed 15 Hz clock and checks the real rate.
+
+## 2026-11-23 evening - stopped here (arm folded upright, base ~59 deg, ALL motors OFF)
+Done today:
+- Approach from 15 cm, joint swings floored at 12 cm (fingers brushed the cube).
+- Settle 1 s + 1 deg arrival before every grasp/release (arm trails its descent ~5 mm out / 3 mm up).
+- Near-table heights +1 cm: Z_GRASP 0.035, Z_PLACE 0.040, Z_MIN_NEAR 0.032 (real fingertips touched the table).
+- Calibration: 4x3 grid, handover waits at grasp height, photo search 9 cm, glare fallback in detect_cube (ROI only).
+- New 12-point calibration SAVED for the current (re-fixed) camera position: fit max 10.9 mm, leave-one-out mean 9.8 / max 16.3 mm.
+  camera_table.prev.yaml = old 7-point map, INVALID now (camera fell and was moved).
+- Collector REACH_BIAS = 0 (re-tune only if grasps still land off with the new map).
+- Failed motor send = lost bridge (HOLD + reconnect), tests/test_send_failure.py.
+BUG FOUND (fixed): robot_calibrate._finish imported calibrate_camera -> real_arm, which installs the READ-ONLY GUARD
+  process-wide: after every calibration save all motor commands were blocked (this, not a USB glitch, made the earlier park
+  "lag 17 deg"). solve() moved to homography.py; robot_calibrate imports that.
+TODO next session (before any live run):
+1. real_live.read(): use a fixed name list (after a failed reopen self.grip is None -> TypeError crash). Patch not applied yet.
+2. tests/test_live_imports.py: import the live modules and assert the guard is NOT installed (write + run).
+3. Joint-2 power connector came loose twice (arm dropped once): keep it tied down; check before enabling.
+4. Then: collector with the new map, watch where the fingers land, 10 episodes.

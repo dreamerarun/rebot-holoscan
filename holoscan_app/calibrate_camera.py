@@ -20,27 +20,12 @@ import yaml
 
 from kinematics import RebotKinematics
 from perception import detect_box, detect_cube, draw, open_camera
+from homography import solve  # noqa: F401 (kept importable here)
 from real_arm import READ_ONLY, RealArmReader, load_real_cfg, measured_q7
 
 assert READ_ONLY
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "config" / "camera_table.yaml"
-
-
-def solve(pairs):
-    px = np.array([p["px"] for p in pairs], np.float64)
-    xy = np.array([p["xy"] for p in pairs], np.float64)
-    H, _ = cv2.findHomography(px, xy, 0)
-    fit = np.array([(H @ np.r_[a, 1])[:2] / (H @ np.r_[a, 1])[2] for a in px])
-    err_fit = np.linalg.norm(fit - xy, axis=1) * 1000
-    loo = []                                   # leave-one-out: honest accuracy on unseen points
-    if len(pairs) >= 6:
-        for i in range(len(pairs)):
-            k = [j for j in range(len(pairs)) if j != i]
-            Hi, _ = cv2.findHomography(px[k], xy[k], 0)
-            q = Hi @ np.r_[px[i], 1]
-            loo.append(np.linalg.norm(q[:2] / q[2] - xy[i]) * 1000)
-    return H, err_fit, np.array(loo)
 
 
 def main():

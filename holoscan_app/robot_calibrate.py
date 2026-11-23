@@ -247,7 +247,7 @@ class ScriptOp(Operator):
             if not self.sim:
                 say(f"[cal] only {len(self.pairs)} points - calibration NOT saved")
             return
-        from calibrate_camera import solve
+        from homography import solve   # NOT calibrate_camera: it imports the read-only guard
         H, e_fit, e_loo = solve(self.pairs)
         out = ROOT / "config" / "camera_table.yaml"
         if out.exists():
