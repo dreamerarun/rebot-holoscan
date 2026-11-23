@@ -77,6 +77,9 @@ class CollectorOp(Operator):
         self._status("waiting for the arm")
 
     def _status(self, step, last=None):
+        if (step, last) != getattr(self, "_last_status", None):     # also print changes in the terminal
+            self._last_status = (step, last)
+            say(f"[col] status: {step}" + (f" - {last}" if last else ""))
         rc.STATUS["step"] = step
         rc.STATUS["points"] = f"episodes saved {self.saved}, this run {self.ok_eps}/{self.ep}"
         if last is not None:
