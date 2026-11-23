@@ -143,6 +143,13 @@ class ScriptOp(Operator):
         q7 = seg.q[self.i]
         self.hold_q = q7
         self._emit(op_output, q7)
+        # film the grasps (camera frames every 0.25 s) so a failed grasp can be seen afterwards
+        if any(w in seg.label for w in ("descend", "close on", "grasp", "check the grasp")) and CAM["frame"] is not None                 and time.time() - getattr(self, "t_film", 0.0) > 0.25:
+            self.t_film = time.time()
+            d = ROOT / "logs" / "cam" / "grasps"
+            d.mkdir(parents=True, exist_ok=True)
+            self.film_n = getattr(self, "film_n", 0) + 1
+            cv2.imwrite(str(d / f"g{self.film_n:04d}.jpg"), CAM["frame"])
         self.i += 1
         if self.i >= len(seg.q):
             self.state, self.t_arrive = "ARRIVE", time.perf_counter()
