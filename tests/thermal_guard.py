@@ -42,7 +42,7 @@ def say(m):
 def main():
     pgid = int(sys.argv[1])
     paused, t_paused, n_pause = False, 0.0, 0
-    last_report = 0.0
+    last_report, hot = 0.0, 0.0
     say(f"[guard] watching process group {pgid}: pause at SoC {PAUSE_SOC} C / GPU {PAUSE_GPU} C, "
         f"resume below {RESUME_SOC} / {RESUME_GPU} C")
     while True:
@@ -55,16 +55,19 @@ def main():
         if not paused and (s >= PAUSE_SOC or g >= PAUSE_GPU):
             os.killpg(pgid, signal.SIGSTOP)
             paused, t0, n_pause = True, time.time(), n_pause + 1
-            say(f"[guard] PAUSED training: SoC {s:.1f} C, GPU {g:.0f} C")
+            if n_pause == 1:
+                say(f"[guard] first pause: SoC {s:.1f} C, GPU {g:.0f} C (further pauses summarised each minute)")
         elif paused and s <= RESUME_SOC and g <= RESUME_GPU:
             os.killpg(pgid, signal.SIGCONT)
             paused = False
             t_paused += time.time() - t0
-            say(f"[guard] resumed after {time.time() - t0:.0f} s: SoC {s:.1f} C, GPU {g:.0f} C")
-        if time.time() - last_report > 300:
+            pass
+        hot = max(hot, s)
+        if time.time() - last_report > 60:
             last_report = time.time()
-            say(f"[guard] SoC {s:.1f} C, GPU {g:.0f} C, {'PAUSED' if paused else 'running'}; "
-                f"paused {n_pause}x / {t_paused / 60:.1f} min so far")
+            say(f"[guard] last minute: hottest SoC {hot:.1f} C; now SoC {s:.1f} C, GPU {g:.0f} C, "
+                f"{'PAUSED' if paused else 'running'}; paused {n_pause}x / {t_paused / 60:.1f} min in total")
+            hot = 0.0
         time.sleep(2)
 
 
