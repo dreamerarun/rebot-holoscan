@@ -51,9 +51,15 @@ def _blob(c, ok=True, reason=""):
                 cv2.boundingRect(c), ang, c)
 
 
+CUBE_MIN_Y_FRAC = 0.30       # cubes lie on the table: ignore yellow above 30 % of the image height
+                             # (the arm's own yellow Seeed sticker shows up there in the folded pose)
+
+
 def detect_cube(bgr) -> Blob:
     hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
-    blobs = _blobs(_mask(hsv, CUBE_HSV), 60)
+    mask = _mask(hsv, CUBE_HSV)
+    mask[: int(CUBE_MIN_Y_FRAC * mask.shape[0])] = 0
+    blobs = _blobs(mask, 60)
     if not blobs:
         return Blob(False, "no yellow cube")
     big = [c for c in blobs if cv2.contourArea(c) >= CUBE_AREA[0]]

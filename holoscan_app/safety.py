@@ -47,7 +47,8 @@ class SafetyParams:
     # so 20 Nm; heat is covered by temp_max_c.
     # gripper: its FORCE_POS current cap already limits it to ~2 Nm, which it reaches just driving its screw
     # open/closed; 3 Nm here is only the backup check
-    torque_max: list = field(default_factory=lambda: [12.0, 20.0, 14.0, 4.0, 4.0, 3.0, 3.0])
+    # joint4/5 (4310, peak ~10 Nm): 4 Nm was reached just carrying the cube with the wrist angled -> 6 Nm
+    torque_max: list = field(default_factory=lambda: [12.0, 20.0, 14.0, 6.0, 6.0, 3.0, 3.0])
     check_tracking: bool = True        # False in shadow mode (motors off, the arm cannot follow)
 
 
