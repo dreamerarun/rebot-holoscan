@@ -127,6 +127,16 @@ cmds, _ = run(f, lambda t: start if t < 0.5 else np.r_[start[0], 0.0, 0.0, start
 check("joint2/3 fold down to -3 deg (rest side margin)", abs(math.degrees(cmds[-1][1]) + 3) < 0.2 and abs(math.degrees(cmds[-1][2]) + 3) < 0.2,
       f"j2 {math.degrees(cmds[-1][1]):.1f}, j3 {math.degrees(cmds[-1][2]):.1f}")
 
+# 10c already below the floor (drooped start): may move UP, never further down
+f = new(fk=lambda q: (0.25, 0.0, 0.01 - 0.2 * (q[1] - start[1])))   # starts at z = 1 cm
+upq = start.copy(); upq[1] = start[1] - D(20)                       # joint2 negative -> z rises
+cmds, _ = run(f, lambda t: start if t < 0.5 else upq, 6.0, measured=start)
+check("below the floor: moving up is allowed", abs(math.degrees(cmds[-1][1] - upq[1])) < 0.5, f"j2 {math.degrees(cmds[-1][1]):.1f} deg")
+f = new(fk=lambda q: (0.25, 0.0, 0.01 - 0.2 * (q[1] - start[1])))
+dn = start.copy(); dn[1] = start[1] + D(5)
+cmds, _ = run(f, lambda t: start if t < 0.5 else dn, 6.0, measured=start)
+check("below the floor: moving further down is refused", abs(cmds[-1][1] - start[1]) < 1e-6, f"j2 {math.degrees(cmds[-1][1]):.2f} deg")
+
 # 11 gripper speed limit 3 cm/s
 f = new()
 g_open = start.copy(); g_open[6] = 0.05

@@ -83,13 +83,17 @@ class SafetyFilter:
     def soft_stop(self, t, measured):
         self._hold(t, measured, "soft stop by user")
 
-    def _workspace_ok(self, q_arm):
+    def _workspace_ok(self, q_arm, q_now=None):
+        """Refuse a move that takes the gripper below the floor or into the base zone - but a gripper that is
+        already there (e.g. a drooped start pose) may always move up / out of it."""
         if self.fk is None:
             return True, ""
         x, y, z = self.fk(q_arm)
-        if z < self.p.tcp_min_z:
+        x0, y0, z0 = self.fk(q_now) if q_now is not None else (x, y, 1e9)
+        if z < self.p.tcp_min_z and z < z0 - 1e-5:
             return False, f"gripper would go below {self.p.tcp_min_z * 100:.0f} cm (z={z * 100:.1f} cm)"
-        if math.hypot(x, y) < self.p.base_keepout_r and z < self.p.base_keepout_z:
+        r, r0 = math.hypot(x, y), math.hypot(x0, y0)
+        if r < self.p.base_keepout_r and z < self.p.base_keepout_z and (r < r0 - 1e-5 or z < z0 - 1e-5):
             return False, "gripper would enter the zone around the base"
         return True, ""
 
@@ -183,7 +187,7 @@ class SafetyFilter:
         self.vel[over] = 0.0
 
         # ---- workspace check on the next command
-        ok, why = self._workspace_ok(nxt[:ARM])
+        ok, why = self._workspace_ok(nxt[:ARM], self.cmd[:ARM])
         if not ok:
             self.notes.append(why)
             self.vel[:] = 0.0

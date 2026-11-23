@@ -139,8 +139,10 @@ class LiveArmOp(Operator):
         self.log.close()
 
     # ------------------------------------------------------------ helpers
+    tcp_min_z = 0.03          # teleop floor; scripted motions set their own (e.g. 0.022 for grasping)
+
     def _new_filter(self, measured, vmax, park=False):
-        p = SafetyParams(limits=self.limits, vmax_deg_s=vmax, check_tracking=not self.dry)
+        p = SafetyParams(limits=self.limits, vmax_deg_s=vmax, check_tracking=not self.dry, tcp_min_z=self.tcp_min_z)
         if park:
             p.blend_s, p.blend_vmax_deg_s, p.align_tol_deg, p.leader_timeout_s = 0.0, vmax, 360.0, 1e9
         f = SafetyFilter(p, fk=self.fk)
