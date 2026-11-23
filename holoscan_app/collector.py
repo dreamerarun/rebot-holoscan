@@ -231,7 +231,23 @@ class CollectorOp(Operator):
             return
         # ---------------- waiting / perceiving at the observe pose
         if self.state in ("SEE", "WAIT_USER"):
-            self._emit(op_output, self.hold_q if self.hold_q is not None else meas)
+            # perceive + plan FIRST and emit at the very end: Holoscan delivers a message when compute() returns,
+            # so a hold emitted before ~0.2 s of planning would arrive stale (2026-11-23: HOLD "leader stale 216 ms")
+            hold = self.hold_q if self.hold_q is not None else meas
+            try:
+                self._see(meas)
+            finally:
+                if self.state == "RUN" and self.segs:
+                    self._emit(op_output, self.segs[0].q[0])
+                elif self.state not in ("ABORT",):
+                    self._emit(op_output, hold)
+            return
+
+        # ---------------- executing a plan
+        self._run(op_output, last, meas)
+
+    def _see(self, meas):
+        if True:
             if self.state == "WAIT_USER":
                 return
             if self.ep >= self.max_eps:
@@ -275,7 +291,7 @@ class CollectorOp(Operator):
             self._status(f"episode {self.ep}: RECORDING", f"cube at ({cxy[0]:.2f}, {cxy[1]:+.2f})")
             return
 
-        # ---------------- executing a plan
+    def _run(self, op_output, last, meas):
         seg = self.segs[self.si]
         if self.state == "ARRIVE":
             self._emit(op_output, seg.q[-1])
@@ -379,7 +395,7 @@ class CollectorApp(Application):
     def compose(self):
         limits = [tuple(self.cfg["sim_limits"][f"joint{i}"]) for i in range(1, 7)]
         if self.a.sim:
-            arm = rc.SimArmOp(self, cfg=self.cfg, limits=limits, name="sim_arm")
+            arm = rc.SimArmOp(self, cfg=self.cfg, limits=limits, initial_cube=None, name="sim_arm")
         else:
             from holoscan.operators import HolovizOp
             from real_common import load_real_cfg

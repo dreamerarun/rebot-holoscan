@@ -297,8 +297,9 @@ class CamViewOp(Operator):
 class SimArmOp(Operator):
     """SafetyFilter + Isaac Sim twin: same interface (.last) as LiveArmOp, no real motors."""
 
-    def __init__(self, fragment, *args, cfg, limits, **kw):
-        self.cfg, self.limits = cfg, limits
+    def __init__(self, fragment, *args, cfg, limits, initial_cube=HANDOVER, **kw):
+        # initial_cube: where to put the twin's cube once at start (calibration: the handover point; None = leave it)
+        self.cfg, self.limits, self.initial_cube = cfg, limits, initial_cube
         super().__init__(fragment, *args, **kw)
 
     def setup(self, spec: OperatorSpec):
@@ -326,11 +327,14 @@ class SimArmOp(Operator):
         q = dict(zip(st["names"], st["q"]))
         meas = np.array([q[f"joint{i}"] for i in range(1, 7)] + [q["finger_left"]])
         cube = st.get("cube")
-        if not self.reset_sent and cube is not None:   # cube onto the handover point (resend until it is there)
-            if math.hypot(cube[0] - HANDOVER[0], cube[1] - HANDOVER[1]) < 0.01:
+        if self.initial_cube is None:
+            self.reset_sent = True
+        if not self.reset_sent and cube is not None:   # cube onto the start point (resend until it is there)
+            ix, iy = self.initial_cube
+            if math.hypot(cube[0] - ix, cube[1] - iy) < 0.01:
                 self.reset_sent = True
             elif now - getattr(self, "t_reset", 0.0) > 0.5:
-                self.link.pub.send_string(json.dumps({"reset": True, "cube_xy": list(HANDOVER), "cube_yaw": 0.0}))
+                self.link.pub.send_string(json.dumps({"reset": True, "cube_xy": [ix, iy], "cube_yaw": 0.0}))
                 self.t_reset = now
         if self.filter is None:
             self.filter = SafetyFilter(SafetyParams(limits=self.limits, vmax_deg_s=15.0, check_tracking=True,
