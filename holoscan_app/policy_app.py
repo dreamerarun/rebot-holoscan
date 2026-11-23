@@ -133,14 +133,16 @@ class ReplaySourceOp(Operator):
 
 # ---------------------------------------------------------------------------- policy client
 class PolicyClient:
-    def __init__(self, port=5610):
-        self.ctx, self.port = zmq.Context.instance(), port
+    """REQ client. NOT thread-safe: only one call at a time (PolicyOp guarantees it)."""
+
+    def __init__(self, port=5610, timeout_ms=SERVER_TIMEOUT_MS):
+        self.ctx, self.port, self.timeout_ms = zmq.Context.instance(), port, timeout_ms
         self._new()
 
     def _new(self):
         self.s = self.ctx.socket(zmq.REQ)
         self.s.setsockopt(zmq.LINGER, 0)
-        self.s.setsockopt(zmq.RCVTIMEO, SERVER_TIMEOUT_MS)
+        self.s.setsockopt(zmq.RCVTIMEO, self.timeout_ms)
         self.s.connect(f"tcp://127.0.0.1:{self.port}")
 
     def call(self, header, img=None):
@@ -150,13 +152,13 @@ class PolicyClient:
         except zmq.error.Again:
             self.s.close()
             self._new()                   # a REQ socket is stuck after a timeout
-            return {"error": f"no reply from the policy server within {SERVER_TIMEOUT_MS} ms"}
+            return {"error": f"no reply from the policy server within {self.timeout_ms} ms"}
 
 
 # ---------------------------------------------------------------------------- policy loop
 class PolicyOp(Operator):
-    def __init__(self, fragment, *args, arm_op, limits, replay, **kw):
-        self.arm_op, self.limits, self.replay = arm_op, limits, replay
+    def __init__(self, fragment, *args, arm_op, limits, replay, server_timeout_ms=SERVER_TIMEOUT_MS, **kw):
+        self.arm_op, self.limits, self.replay, self.timeout_ms = arm_op, limits, replay, server_timeout_ms
         super().__init__(fragment, *args, **kw)
 
     def setup(self, spec: OperatorSpec):
@@ -166,7 +168,12 @@ class PolicyOp(Operator):
 
     def start(self):
         from kinematics import RebotKinematics
-        self.k, self.mp, self.client = RebotKinematics(), MotionPlanner(self.limits), PolicyClient()
+        from concurrent.futures import ThreadPoolExecutor
+        self.k, self.mp = RebotKinematics(), MotionPlanner(self.limits)
+        self.client = PolicyClient(timeout_ms=self.timeout_ms)
+        # inference runs in this worker so the 60 Hz loop never waits for the GPU (SmolVLA chunks take 100s of ms;
+        # a blocked loop would starve the arm of targets and the SafetyFilter would HOLD on "stale")
+        self.pool, self.inflight = ThreadPoolExecutor(max_workers=1), None
         self.state, self.why = "WAIT_ARM", ""
         self.segs, self.si, self.i, self.after = [], 0, 0, "READY"
         self.hold_q = None
@@ -240,12 +247,16 @@ class PolicyOp(Operator):
             KEYS.remove(key)
             if key == "x" and self.state in ("RUN", "MOVE"):
                 self._stop("stop key")
+            elif key == "g" and self.state == "READY" and self.inflight is not None and not self.inflight.done():
+                say("[pol] the policy server is still answering an old request - press g again in a moment")
             elif key == "g" and self.state == "READY":
+                self.inflight = None
                 r = self.client.call({"op": "reset"})
                 if "error" in r:
                     self._stop(r["error"])
                 else:
                     self.state, self.steps, self.t_run = "RUN", 0, time.perf_counter()
+                    self.next_due = self.t_run
                     self.errs, self.dists = [], []
                     self.prev_t = self.next_t = np.asarray(self.hold_q, float)
                     self.interp = 0
@@ -308,24 +319,45 @@ class PolicyOp(Operator):
         elif (not self.replay and meas is not None and time.perf_counter() - self.t_run > MIN_EPISODE_S
               and np.degrees(np.max(np.abs(meas[:6] - PHOTO_Q[:6]))) < 4.0):
             self._stop("episode finished: back at the observe pose")   # never start a second, unasked attempt
-        elif self.tick % STEP == 0:
-            self._policy_step(meas)
+        else:
+            self._policy_poll(meas)
         if self.state == "RUN":                  # interpolate prev -> next over one policy period
             self.interp = min(self.interp + 1, STEP)
             a = self.interp / (STEP)
             self.hold_q = (1 - a) * self.prev_t + a * self.next_t
         self._emit(op_output, self.hold_q)
 
-    def _policy_step(self, meas):
-        f = self.frame
-        if f is None or (not self.replay and time.time() - f["t"] > 0.3):
-            self._stop("no fresh camera frame")
-            return
-        state = f["state"] if self.replay else arm_state(meas[:6], meas[6])
+    def _query(self, f, state):
         t0 = time.perf_counter()
         r = self.client.call({"op": "act", "state": np.asarray(state, float).tolist(), "shape": list(f["rgb"].shape)},
                              np.ascontiguousarray(f["rgb"]))
-        self.rt_ms = (time.perf_counter() - t0) * 1000
+        return r, f, (time.perf_counter() - t0) * 1000
+
+    def _policy_poll(self, meas):
+        """Every tick: take a finished reply; on the 15 Hz beat send the next request if none is in flight."""
+        if self.inflight is not None:
+            if not self.inflight.done():
+                if time.perf_counter() - self.t_req > self.timeout_ms / 1000 + 0.2:
+                    self._stop(f"no reply from the policy server within {self.timeout_ms} ms")
+                return
+            r, f, self.rt_ms = self.inflight.result()
+            self.inflight = None
+            self._use_reply(r, f, meas)
+            if self.state != "RUN":
+                return
+        now = time.perf_counter()
+        if now >= self.next_due:
+            # 15 calls per second ON AVERAGE: a late reply is followed by an immediate catch-up call. The policy plays
+            # its chunk one action per call, so lost beats made it fall behind the world (623 calls for 815 frames)
+            self.next_due = max(self.next_due + 1.0 / POLICY_HZ, now - 0.5)
+            f = self.frame
+            if f is None or (not self.replay and time.time() - f["t"] > 0.3):
+                self._stop("no fresh camera frame")
+                return
+            state = f["state"] if self.replay else arm_state(meas[:6], meas[6])
+            self.t_req, self.inflight = time.perf_counter(), self.pool.submit(self._query, f, state)
+
+    def _use_reply(self, r, f, meas):
         if "error" in r:
             self._stop(r["error"])
             return
@@ -438,7 +470,8 @@ class PolicyApp(Application):
             src = CamSourceOp(self, PeriodicCondition(self, recess_period=timedelta(milliseconds=2)), name="camera")
             title = "reBot ACT policy on Holoscan - LIVE"
         pol = PolicyOp(self, PeriodicCondition(self, recess_period=timedelta(seconds=1 / RATE)), arm_op=arm,
-                       limits=limits, replay=self.a.replay is not None, name="policy")
+                       limits=limits, replay=self.a.replay is not None, server_timeout_ms=self.a.server_timeout_ms,
+                       name="policy")
         view = ViewOp(self, name="view")
         viz = HolovizOp(self, name="holoviz", width=960, height=720, window_title=title,
                         tensors=[dict(name="video", type="color")])
@@ -455,6 +488,8 @@ def main():
     m.add_argument("--replay", type=int, help="staged episode number (1 = oldest) to replay into the sim twin")
     ap.add_argument("--task", default="cube_to_box_scripted")
     ap.add_argument("--keys-file", default=str(ROOT / "keys"))
+    ap.add_argument("--server-timeout-ms", type=int, default=SERVER_TIMEOUT_MS,
+                    help="max wait for one policy reply (ACT ~100 ms per chunk; SmolVLA more - use 2000)")
     a = ap.parse_args()
     if a.replay is not None:
         eps = sorted((ROOT / "data" / "staging" / a.task).glob("episode_*"))
