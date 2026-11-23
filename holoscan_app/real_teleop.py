@@ -366,7 +366,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--vmax", type=float, default=20.0, help="deg/s software speed cap (max 45)")
     ap.add_argument("--dry", action="store_true", help="never send anything to the motors")
-    ap.add_argument("--leader-port", default="/dev/ttyUSB0")
+    ap.add_argument("--leader-port", default="auto")
     ap.add_argument("--no-gripper", action="store_true", help="leave the gripper motor off")
     ap.add_argument("--grip-force", type=float, default=0.10, help="gripper FORCE_POS current cap 0.03-0.2 (Seeed default 0.1)")
     ap.add_argument("--keys-file", help="also accept keys appended to this file (echo s >> FILE)")

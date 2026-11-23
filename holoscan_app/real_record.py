@@ -45,6 +45,25 @@ CAM_FPS = 30     # what we ask the camera for
 FPS = 15         # recorded dataset rate: frames are taken on a fixed 15 Hz clock
 
 
+def find_camera_index(name="C270"):
+    """First /dev/videoN whose name contains `name` and that delivers frames (V4L2 index)."""
+    import glob
+    import re
+    for path in sorted(glob.glob("/sys/class/video4linux/video*"), key=lambda p: int(re.sub(r"\D", "", p) or 0)):
+        try:
+            if name.lower() not in open(path + "/name").read().lower():
+                continue
+        except OSError:
+            continue
+        idx = int(re.sub(r"\D", "", path.rsplit("/", 1)[-1]))
+        cap = cv2.VideoCapture(idx, cv2.CAP_V4L2)
+        ok = cap.isOpened() and cap.read()[0]
+        cap.release()
+        if ok:
+            return idx
+    raise RuntimeError(f"no working camera named {name!r} found")
+
+
 class CameraOp(Operator):
     def __init__(self, fragment, *args, index, size, **kw):
         self.index, self.size = index, size
@@ -53,22 +72,42 @@ class CameraOp(Operator):
     def setup(self, spec: OperatorSpec):
         spec.output("frame")
 
-    def start(self):
+    def _open(self):
         w, h = self.size
-        self.cap = cv2.VideoCapture(self.index, cv2.CAP_V4L2)
+        idx = find_camera_index(self.name) if self.index == "auto" else int(self.index)
+        self.cap = cv2.VideoCapture(idx, cv2.CAP_V4L2)
         if not self.cap.isOpened():
-            raise RuntimeError(f"camera index {self.index} cannot be opened")
+            raise RuntimeError(f"camera index {idx} cannot be opened")
+        print(f"[cam] {self.name} at index {idx}", flush=True)
         self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
         self.cap.set(cv2.CAP_PROP_FPS, CAM_FPS)
+
+    def start(self):
+        self.name = "C270"
+        self._open()
         self.t_cam, self.n_cam = time.perf_counter(), 0
+        self.fail_since = None
 
     def stop(self):
         self.cap.release()
 
     def compute(self, op_input, op_output, context):
         ok, bgr = self.cap.read()            # blocks until the next camera frame
+        if not ok:                            # USB drop: reopen by name (index may change)
+            now = time.perf_counter()
+            self.fail_since = self.fail_since or now
+            if now - self.fail_since > 1.0:
+                try:
+                    self.cap.release()
+                    self._open()
+                    self.fail_since = None
+                except Exception as exc:
+                    print(f"[cam] reopen failed: {exc}", flush=True)
+                    time.sleep(0.5)
+            return
+        self.fail_since = None
         if ok:
             now = time.perf_counter()
             self.n_cam += 1
@@ -262,13 +301,13 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--task", default="cube_to_box", help="staging folder name")
     ap.add_argument("--task-text", default="Pick up the yellow cube and place it in the orange box")
-    ap.add_argument("--cam-index", type=int, default=1)
+    ap.add_argument("--cam-index", default="auto", help="auto = the camera named C270")
     ap.add_argument("--size", default="640x480")
     ap.add_argument("--vmax", type=float, default=15.0)
     ap.add_argument("--grip-force", type=float, default=0.10)
     ap.add_argument("--sim", action="store_true", help="also drive the Isaac Sim twin")
     ap.add_argument("--dry", action="store_true", help="never send anything to the motors")
-    ap.add_argument("--leader-port", default="/dev/ttyUSB0")
+    ap.add_argument("--leader-port", default="auto", help="auto = the leader's CH340 by its stable by-id name")
     ap.add_argument("--keys-file")
     a = ap.parse_args()
     if not 1.0 <= a.vmax <= 45.0 or not 0.03 <= a.grip_force <= 0.2:

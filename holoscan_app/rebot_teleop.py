@@ -41,10 +41,15 @@ SIM_JOINTS = ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6",
 def find_leader_port(requested: str) -> str:
     if requested and requested != "auto":
         return requested
+    # Prefer the stable by-id name of the leader's CH340 (USB vendor 1a86): it survives re-plugs,
+    # while ttyUSB0 may come back as ttyUSB1.
+    ch340 = sorted(glob.glob("/dev/serial/by-id/*1a86*"))
+    if len(ch340) == 1:
+        return ch340[0]
     cands = sorted(glob.glob("/dev/serial/by-id/*")) or sorted(
         glob.glob("/dev/ttyUSB*") + glob.glob("/dev/ttyACM*"))
     if len(cands) == 1:
-        return os.path.realpath(cands[0])
+        return cands[0]
     if not cands:
         raise RuntimeError("No serial device found for the 102 Leader (plug it in, then `ls /dev/ttyUSB*`).")
     raise RuntimeError(f"Several serial devices {cands}; pass --leader-port.")

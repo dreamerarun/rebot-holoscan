@@ -78,9 +78,22 @@ class LeaderDevice:
                 lo, hi = self.cfg["leader"]["ranges"][name]
                 deg[name] = float(np.clip(unwrap(m.angle_deg, lo, hi), lo, hi))
             self.last = deg
+            self.fail_since = None
             return True, deg
         except Exception as exc:
-            print(f"[leader] read failed: {exc}", flush=True)
+            now = time.perf_counter()
+            if getattr(self, "fail_since", None) is None:
+                self.fail_since = now
+                print(f"[leader] read failed: {exc}", flush=True)
+            if now - self.fail_since > 0.5 and now - getattr(self, "last_reopen", 0.0) > 1.0:
+                self.last_reopen = now
+                try:                                   # USB re-plug: reopen (by-id path stays valid)
+                    self.close()
+                    self.open()
+                    self.fail_since = None
+                    print("[leader] reconnected", flush=True)
+                except Exception as exc2:
+                    print(f"[leader] reconnect failed: {exc2}", flush=True)
             return False, self.last
 
 
