@@ -36,6 +36,8 @@ from safety import SafetyFilter, SafetyParams
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_KEYS = []
+CAM = {"frame": None, "t": 0.0, "fps": 0.0}          # latest camera frame (live view owns the camera)
+STATUS = {"step": "waiting for the arm", "points": 0, "last": ""}
 GRASP_RANGE = (0.004, 0.025)     # finger opening (m) that means "holding the 4 cm cube"
 
 
@@ -61,6 +63,7 @@ class ScriptOp(Operator):
         say("[cal] waiting for the arm" + (" (sim twin)" if self.sim else " - type e to enable it"))
 
     def _abort(self, why):
+        STATUS["step"], STATUS["last"] = "ABORTED", why
         if self.state not in ("ABORT", "DONE"):
             say(f"[cal] ABORTED: {why}. The arm holds where it is" + ("" if self.sim else " - type p to park"))
             self.state = "ABORT"
@@ -176,32 +179,40 @@ class ScriptOp(Operator):
         self.i = 0
         self.state = "RUN"
         if self.si < len(self.segs):
+            STATUS["step"] = self.segs[self.si].label
             say(f"[cal] > {self.segs[self.si].label}")
 
     # ------------------------------------------------------------------ photos (live)
     def _take_photo(self, seg):
-        from perception import detect_cube, open_camera
-        cap, _ = open_camera()
-        res = None
-        for _ in range(25):                    # let exposure settle, then take the first clean detection
-            ok, img = cap.read()
-            if not ok:
-                continue
-            c = detect_cube(img)
-            if c.ok:
-                res = (c.centroid, img)
-        cap.release()
-        seg.info["result"] = res
+        """Use frames from the live camera stream taken AFTER the arm stopped: median of 5 clean detections."""
+        from perception import detect_cube
+        t_req, seen, pts, last_img = time.time(), 0.0, [], None
+        while time.time() - t_req < 3.0 and len(pts) < 5:
+            if CAM["frame"] is not None and CAM["t"] > max(t_req + 0.3, seen):
+                seen, img = CAM["t"], CAM["frame"]
+                last_img = img
+                c = detect_cube(img)
+                if c.ok:
+                    pts.append(c.centroid)
+            time.sleep(0.02)
+        if len(pts) >= 3:
+            seg.info["result"] = (tuple(np.median(np.array(pts), axis=0)), last_img)
+        else:
+            seg.info["result"] = None
+            if last_img is not None:
+                cv2.imwrite(str(ROOT / "logs" / "cam" / f"cal_miss_{seg.event.split(':')[1]}.jpg"), last_img)
 
     def _photo_done(self, seg):
         res = seg.info.get("result")
         x, y = seg.info["xy"]
         if res is None:
-            say(f"[cal]   photo: cube NOT detected at ({x:.2f}, {y:+.2f}) - point skipped")
+            STATUS["last"] = f"point at ({x:.2f}, {y:+.2f}): cube NOT seen - skipped"
+            say(f"[cal]   photo: cube NOT detected at ({x:.2f}, {y:+.2f}) - point skipped (frame saved)")
             return
         (px, py), img = res
         self.pairs.append({"px": [float(px), float(py)], "xy": [x, y]})
         cv2.imwrite(str(ROOT / "logs" / "cam" / f"cal_{len(self.pairs):02d}.jpg"), img)
+        STATUS["points"], STATUS["last"] = len(self.pairs), f"photo OK: pixel ({px:.0f}, {py:.0f}) = table ({x:.2f}, {y:+.2f})"
         say(f"[cal]   photo: cube at pixel ({px:.0f}, {py:.0f}) <-> table ({x:.2f}, {y:+.2f})  [{len(self.pairs)} points]")
 
     def _finish(self):
@@ -222,6 +233,51 @@ class ScriptOp(Operator):
             "leave_one_out_mm_max": float(e_loo.max()), "points": self.pairs}, sort_keys=False))
         say(f"[cal] SAVED camera_table.yaml: fit max {e_fit.max():.1f} mm, unseen points mean "
             f"{e_loo.mean():.1f} / max {e_loo.max():.1f} mm")
+
+
+# ---------------------------------------------------------------------------- live camera view
+class CamViewOp(Operator):
+    """Owns the camera: live Holoviz window with the cube/box outlines and the script status; keeps the latest
+    frame in CAM for the photos."""
+
+    def setup(self, spec: OperatorSpec):
+        spec.output("tensors")
+        spec.output("specs")
+
+    def start(self):
+        from perception import open_camera
+        self.cap, idx = open_camera()
+        self.n, self.t0 = 0, time.time()
+        say(f"[cam] live view from camera index {idx}")
+
+    def stop(self):
+        self.cap.release()
+
+    def compute(self, op_input, op_output, context):
+        import cupy as cp
+        from holoscan.operators import HolovizOp
+        from perception import detect_box, detect_cube, draw
+        ok, bgr = self.cap.read()
+        if not ok:
+            time.sleep(0.05)
+            return
+        now = time.time()
+        CAM["frame"], CAM["t"] = bgr, now
+        self.n += 1
+        if now - self.t0 > 2.0:
+            CAM["fps"], self.n, self.t0 = self.n / (now - self.t0), 0, now
+        view = draw(bgr, detect_cube(bgr), detect_box(bgr))
+        rgb = cv2.cvtColor(view, cv2.COLOR_BGR2RGB)
+        lines = [f"step: {STATUS['step']}", f"calibration points: {STATUS['points']} / 9   camera {CAM['fps']:4.1f} fps"]
+        if STATUS["last"]:
+            lines.append(STATUS["last"])
+        lines.append("keys in the terminal:  g go   x abort   s hold   p park   q quit")
+        spec = HolovizOp.InputSpec("txt", "text")
+        spec.text, spec.color, spec.priority = lines, [1.0, 1.0, 0.3, 1.0], 10
+        op_output.emit({"video": cp.asarray(rgb),
+                        "txt": np.asarray([(0.015, 0.03 + 0.05 * i, 0.04) for i in range(len(lines))], dtype=np.float32)},
+                       "tensors")
+        op_output.emit([spec], "specs")
 
 
 # ---------------------------------------------------------------------------- sim arm
@@ -296,6 +352,11 @@ class CalApp(Application):
             arm = rt.LiveArmOp(self, rcfg=load_real_cfg(), limits=limits, vmax=15.0, dry=False,
                                with_gripper=True, grip_force=0.10, name="live_arm")
             self.add_flow(arm, rt.SimOp(self, cfg=self.cfg, name="sim"))
+            from holoscan.operators import HolovizOp
+            cam = CamViewOp(self, PeriodicCondition(self, recess_period=timedelta(milliseconds=2)), name="camera")
+            viz = HolovizOp(self, name="view", width=960, height=720, window_title="reBot calibration - live camera",
+                            tensors=[dict(name="video", type="color")])
+            self.add_flow(cam, viz, {("tensors", "receivers"), ("specs", "input_specs")})
         script = ScriptOp(self, PeriodicCondition(self, recess_period=timedelta(seconds=1 / RATE)),
                           arm_op=arm, limits=limits, sim=self.a.sim, name="script")
         self.add_flow(script, arm)
@@ -343,7 +404,7 @@ def main():
     key_sources(a.keys_file)
     from holoscan.schedulers import MultiThreadScheduler
     app = CalApp(a, load_cfg())
-    app.scheduler(MultiThreadScheduler(app, name="mt", worker_thread_number=4, stop_on_deadlock=False))
+    app.scheduler(MultiThreadScheduler(app, name="mt", worker_thread_number=6, stop_on_deadlock=False))
     app.run()
 
 

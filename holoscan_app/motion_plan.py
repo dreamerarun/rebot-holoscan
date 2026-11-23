@@ -185,5 +185,5 @@ CAL_GRID = [(0.18, -0.10), (0.18, 0.00), (0.18, 0.10),
             (0.25, 0.10), (0.25, 0.00), (0.25, -0.10),
             (0.32, -0.10), (0.32, 0.00), (0.32, 0.10)]
 HANDOVER = (0.25, 0.0)
-PHOTO_Q = np.radians([80.0, -3.0, -3.0, 0.0, 0.0, 0.0])
+PHOTO_Q = np.radians([60.0, -3.0, -3.0, 0.0, 0.0, 0.0])   # folded, base turned 60 deg to +y (was 80: less cable flex)
 READY_Q = np.radians([0.0, -3.0, -3.0, 0.0, 0.0, 0.0])    # folded rest, wrist level
