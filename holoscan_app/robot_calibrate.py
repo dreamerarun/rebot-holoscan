@@ -194,13 +194,27 @@ class ScriptOp(Operator):
     # ------------------------------------------------------------------ photos (live)
     def _take_photo(self, seg):
         """Use frames from the live camera stream taken AFTER the arm stopped: median of 5 clean detections."""
-        from perception import detect_cube
+        from perception import detect_cube, load_calibration
+        roi = None
+        try:   # look only within 6 cm of where the cube was just put (previous calibration), not at stickers elsewhere
+            H_old, _ = load_calibration(ROOT / "config" / "camera_table.yaml")
+            Hi = np.linalg.inv(H_old)
+            x, y = seg.info["xy"]
+            circ = []
+            for t in np.linspace(0, 2 * math.pi, 36):
+                p = Hi @ np.array([x + 0.06 * math.cos(t), y + 0.06 * math.sin(t), 1.0])
+                circ.append([int(p[0] / p[2]), int(p[1] / p[2])])
+            if CAM["frame"] is not None:
+                roi = np.zeros(CAM["frame"].shape[:2], np.uint8)
+                cv2.fillPoly(roi, [np.array(circ, np.int32)], 255)
+        except Exception:
+            roi = None
         t_req, seen, pts, last_img = time.time(), 0.0, [], None
         while time.time() - t_req < 3.0 and len(pts) < 5:
             if CAM["frame"] is not None and CAM["t"] > max(t_req + 0.3, seen):
                 seen, img = CAM["t"], CAM["frame"]
                 last_img = img
-                c = detect_cube(img)
+                c = detect_cube(img, roi)
                 if c.ok:
                     pts.append(c.centroid)
             time.sleep(0.02)
@@ -281,7 +295,7 @@ class CamViewOp(Operator):
         rgb = cv2.cvtColor(view, cv2.COLOR_BGR2RGB)
         pts = STATUS["points"]
         lines = [f"step: {STATUS['step']}",
-                 (pts if isinstance(pts, str) else f"calibration points: {pts} / 9") + f"   camera {CAM['fps']:4.1f} fps"]
+                 (pts if isinstance(pts, str) else f"calibration points: {pts} / {len(CAL_GRID)}") + f"   camera {CAM['fps']:4.1f} fps"]
         if STATUS["last"]:
             lines.append(STATUS["last"])
         lines.append("keys in the terminal:  g go   x abort   s hold   p park   q quit")
