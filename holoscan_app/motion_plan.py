@@ -131,6 +131,26 @@ class MotionPlanner:
             report.append((s.label, len(s.q) / RATE, min(zs) if zs else None))
         return report
 
+    def park(self, q_now, grip, z_up=0.12):
+        """Rise straight up (keeping the gripper orientation) to z_up if lower, then fold to the ready pose."""
+        q0 = np.asarray(q_now)[:ARM]
+        segs = []
+        T = self.k.fk(q0)
+        if T.translation[2] < z_up - 0.005:
+            T_up = pin.SE3(T.rotation, T.translation + np.array([0.0, 0.0, z_up - T.translation[2]]))
+            n = max(int((z_up - T.translation[2]) / V_UP * RATE), 2)
+            d = pin.log6(T.actInv(T_up))
+            out, q = [], q0
+            for i in range(1, n + 1):
+                q, pe, re = self.k.ik(T * pin.exp6(d * smooth(i / n)), q, iters=80)
+                if pe > 2e-3 or re > 2e-2:
+                    raise ValueError(f"rise: IK error {pe * 1000:.1f} mm")
+                out.append(np.r_[q, grip])
+            segs.append(Segment("rise straight up", out, Z_MIN_NEAR))
+            q0 = out[-1][:ARM]
+        segs.append(self.joint_move("fold to the rest pose", q0, READY_Q, grip))
+        return segs
+
     # ------------------------------------------------------------ the calibration plan
     def calibration(self, q_start, grid, handover, photo_q):  # noqa: C901
         segs = []

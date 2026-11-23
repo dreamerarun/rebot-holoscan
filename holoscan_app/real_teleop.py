@@ -202,8 +202,13 @@ class LiveArmOp(Operator):
             if cmd is not None:
                 self.arm.send(cmd)
         elif self.state == "PARKING":
-            rest = rest_pose()
-            rest[6] = self.park.cmd[6]          # park does not close/open the gripper
+            path = getattr(self, "park_path", None)
+            if path:
+                rest = np.asarray(path[min(self.park_i, len(path) - 1)], float)
+                self.park_i += 1
+            else:
+                rest = rest_pose()
+                rest[6] = self.park.cmd[6]          # park does not close/open the gripper
             cmd = self.park.step(now, 1 / RATE, rest, 0.0, measured, f_age, health)
             if cmd is not None:
                 self.arm.send(cmd)
@@ -290,9 +295,20 @@ class LiveArmOp(Operator):
             if self.state == "OFF" or measured is None:
                 say("[live] nothing to park (motors off)" if self.state == "OFF" else "[live] no feedback")
                 return
-            self.park = self._new_filter(self.filter.cmd if self.filter is not None else measured, 15.0, park=True)
+            start = self.filter.cmd if self.filter is not None else measured
+            try:   # rise straight up first, then fold: a direct joint path from near the table can dip below the floor
+                from motion_plan import MotionPlanner
+                mp = MotionPlanner(self.limits)
+                segs = mp.park(measured, float(start[6]))
+                mp.validate(segs, measured)
+                self.park_path = [q for s in segs for q in s.q]
+            except Exception as exc:
+                say(f"[live] park path rejected ({exc}) - HOLDING. Support the arm, or teleop it up first.")
+                return
+            self.park_i = 0
+            self.park = self._new_filter(start, 15.0, park=True)
             self.state = "PARKING"
-            say("[live] parking slowly (15 deg/s)...")
+            say(f"[live] parking: rise straight up, then fold ({len(self.park_path) / 60:.0f} s)...")
 
     def _status(self, measured, cmd, health):
         if self.state == "OFF":
