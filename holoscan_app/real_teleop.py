@@ -182,6 +182,13 @@ class LiveArmOp(Operator):
         states = self.arm.read()
         measured = measured_q7(self.rcfg, states)
         health = health_of(states)
+        # a motor we switched on that now reports "disabled" lost power or restarted (2026-11-23: joints 2-6 +
+        # gripper dropped out together with the base turned 40 deg) - that is a fault, not just a tracking error
+        if health is not None and self.arm.enabled and not self.dry:
+            off = [n for n, st in states.items() if st is not None and st.status_code == 0
+                   and (n != "gripper" or self.arm.grip_enabled)]
+            if off:
+                health["fault"] = (health["fault"] + ", " if health["fault"] else "") +                     f"{', '.join(off)} switched OFF unexpectedly (power interruption?)"
         t_age = 1e9 if self.t_target is None else now - self.t_target
         f_age = 0.0 if measured is not None else 1e9
 
