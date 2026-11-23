@@ -304,7 +304,10 @@ class CollectorOp(Operator):
             if self.recording:
                 self._record_frame(last)
             err = 999.0 if meas is None else float(np.degrees(np.max(np.abs(np.asarray(meas)[:6] - seg.q[-1][:6]))))
-            if err < 3.0:
+            # at the grasp the arm must really be there: 1 deg (3 deg after 2 s, the elbow sags under gravity)
+            near_cube = seg.label in ("descend to the cube", "settle at the cube")
+            tol = 1.0 if (near_cube and time.perf_counter() - self.t_arrive < 2.0) else 3.0
+            if err < tol:
                 self._event(seg, meas)
             elif time.perf_counter() - self.t_arrive > 4.0:
                 self._abort(f"arm did not reach the end of '{seg.label}' ({err:.1f} deg off)")

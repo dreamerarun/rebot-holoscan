@@ -192,6 +192,8 @@ class MotionPlanner:
         segs[-1].z_min = 0.12
         segs.append(self.vertical_a("descend to the cube", cx, cy, a, z_carry, Z_GRASP, q_pre, GRIP_OPEN, V_DOWN, Z_MIN_NEAR))
         q = segs[-1].q[-1][:ARM]
+        # let the arm settle before closing: closing while the sagging elbow still creeps in lands short (2026-11-23)
+        segs.append(self.hold("settle at the cube", q, GRIP_OPEN, 0.6, Z_MIN_NEAR))
         segs.append(self.gripper("grasp", q, GRIP_OPEN, GRIP_CLOSE, 1.2))
         segs.append(self.hold("check the grasp", q, GRIP_CLOSE, 0.5, Z_MIN_NEAR, event="check_grasp"))
         segs.append(self.vertical_a("lift", cx, cy, a, Z_GRASP, z_carry, q, GRIP_CLOSE, V_UP, Z_MIN_NEAR))
