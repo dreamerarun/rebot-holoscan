@@ -47,6 +47,7 @@ REACH_BOX = {"x": (0.08, 0.40), "y": (-0.32, 0.26), "z": (0.0, 0.40)}   # grippe
 MAX_JUMP_DEG = 20.0               # one policy step may not move any joint more than this
 LIMIT_STOP = math.radians(10.0)   # an action more than this beyond a joint limit stops the policy
 MAX_RUN_S = 120.0
+MIN_EPISODE_S = 25.0             # live: back at the observe pose after this long = the attempt is over
 SERVER_TIMEOUT_MS = 500
 STATS = {}                        # per-operator compute times for the overlay
 
@@ -304,7 +305,10 @@ class PolicyOp(Operator):
             self._stop(f"run time over {MAX_RUN_S:.0f} s")
         elif self.replay and ReplaySourceOp.RUNNING["done"]:
             self._stop("end of the recorded episode")
-        elif self.tick % (STEP) == 0:
+        elif (not self.replay and meas is not None and time.perf_counter() - self.t_run > MIN_EPISODE_S
+              and np.degrees(np.max(np.abs(meas[:6] - PHOTO_Q[:6]))) < 4.0):
+            self._stop("episode finished: back at the observe pose")   # never start a second, unasked attempt
+        elif self.tick % STEP == 0:
             self._policy_step(meas)
         if self.state == "RUN":                  # interpolate prev -> next over one policy period
             self.interp = min(self.interp + 1, STEP)
