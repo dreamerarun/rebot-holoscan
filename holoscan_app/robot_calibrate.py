@@ -199,13 +199,13 @@ class ScriptOp(Operator):
         """Use frames from the live camera stream taken AFTER the arm stopped: median of 5 clean detections."""
         from perception import detect_cube, load_calibration
         roi = None
-        try:   # look only within 6 cm of where the cube was just put (previous calibration), not at stickers elsewhere
+        try:   # look only within 9 cm of where the cube was just put (previous calibration), not at stickers elsewhere
             H_old, _ = load_calibration(ROOT / "config" / "camera_table.yaml")
             Hi = np.linalg.inv(H_old)
             x, y = seg.info["xy"]
             circ = []
             for t in np.linspace(0, 2 * math.pi, 36):
-                p = Hi @ np.array([x + 0.06 * math.cos(t), y + 0.06 * math.sin(t), 1.0])
+                p = Hi @ np.array([x + 0.09 * math.cos(t), y + 0.09 * math.sin(t), 1.0])
                 circ.append([int(p[0] / p[2]), int(p[1] / p[2])])
             if CAM["frame"] is not None:
                 roi = np.zeros(CAM["frame"].shape[:2], np.uint8)
