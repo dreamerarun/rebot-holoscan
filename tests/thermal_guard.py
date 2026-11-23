@@ -12,8 +12,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-PAUSE_SOC, PAUSE_GPU = 90.0, 83.0
-RESUME_SOC, RESUME_GPU = 82.0, 76.0
+PAUSE_SOC, PAUSE_GPU = 88.0, 82.0     # the hottest sensor jumps ~3 C within a sample: 90 let 93.5 through
+RESUME_SOC, RESUME_GPU = 80.0, 75.0
 
 
 def soc_temp():
@@ -68,7 +68,7 @@ def main():
             say(f"[guard] last minute: hottest SoC {hot:.1f} C; now SoC {s:.1f} C, GPU {g:.0f} C, "
                 f"{'PAUSED' if paused else 'running'}; paused {n_pause}x / {t_paused / 60:.1f} min in total")
             hot = 0.0
-        time.sleep(2)
+        time.sleep(1)
 
 
 if __name__ == "__main__":
