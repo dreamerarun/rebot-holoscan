@@ -158,8 +158,10 @@ Keys in the arm terminals: `e` enable · `g` go · `x` stop · `s` hold · `r` b
 
 ## Acknowledgements
 
-NVIDIA Holoscan and Isaac Sim · Hugging Face LeRobot, ACT and SmolVLA · Seeed Studio reBot.
+NVIDIA Holoscan and Isaac Sim · Hugging Face LeRobot, ACT and SmolVLA · Seeed Studio reBot · [ReBot_Arm_DigitalTwin_DM](https://github.com/Yang-Ci/ReBot_Arm_DigitalTwin_DM) for the arm description.
 
 ## License
 
-MIT - see [LICENSE](LICENSE). The reBot arm description in `assets/` comes from Seeed Studio and keeps its original terms.
+MIT - see [LICENSE](LICENSE). The reBot arm description in `assets/` (URDF and USD) is derived from
+[ReBot_Arm_DigitalTwin_DM](https://github.com/Yang-Ci/ReBot_Arm_DigitalTwin_DM) and stays under the
+CERN-OHL-W-2.0 licence - see [assets/NOTICE.md](assets/NOTICE.md).
